@@ -216,7 +216,7 @@ function renderDetailContent(container, tableId) {
           </div>
           <p style="font-size:var(--text-xs);color:var(--text-tertiary);margin-bottom:var(--space-md);">注文は各卓のタブレットから行えます</p>
           <div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:var(--space-md);font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-secondary);word-break:break-all;">
-            ${window.location.origin}/#/tablet/${tableId}
+            ${window.location.origin}/#/tablet/${table.number}
           </div>
         </div>
 

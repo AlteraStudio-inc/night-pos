@@ -594,3 +594,114 @@
   from { opacity: 0; transform: scale(0.8); }
   to { opacity: 1; transform: scale(1); }
 }
+
+/* --- Top Menu (GRAND MENU / CAST DRINK) --- */
+.tablet-top-menu {
+  display: flex;
+  gap: var(--space-2xl);
+  padding: var(--space-3xl);
+  justify-content: center;
+  align-items: stretch;
+}
+
+.tablet-top-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xl);
+  width: 320px;
+  min-height: 280px;
+  padding: var(--space-3xl) var(--space-2xl);
+  background: var(--bg-card);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-sans);
+}
+
+.tablet-top-btn:hover {
+  border-color: var(--gold-dim);
+  background: var(--bg-card-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(200, 169, 96, 0.15);
+}
+
+.tablet-top-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.tablet-top-btn-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(200, 169, 96, 0.15), rgba(200, 169, 96, 0.05));
+  border: 1px solid rgba(200, 169, 96, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  transition: all 0.3s ease;
+}
+
+.tablet-top-btn:hover .tablet-top-btn-icon {
+  background: linear-gradient(135deg, rgba(200, 169, 96, 0.25), rgba(200, 169, 96, 0.1));
+  border-color: var(--gold);
+  transform: scale(1.05);
+}
+
+.tablet-top-btn-cast .tablet-top-btn-icon {
+  background: linear-gradient(135deg, rgba(78, 205, 196, 0.15), rgba(78, 205, 196, 0.05));
+  border-color: rgba(78, 205, 196, 0.2);
+  color: var(--cyan);
+}
+
+.tablet-top-btn-cast:hover .tablet-top-btn-icon {
+  background: linear-gradient(135deg, rgba(78, 205, 196, 0.25), rgba(78, 205, 196, 0.1));
+  border-color: var(--cyan);
+}
+
+.tablet-top-btn-cast:hover {
+  border-color: rgba(78, 205, 196, 0.4);
+  box-shadow: 0 12px 40px rgba(78, 205, 196, 0.12);
+}
+
+.tablet-top-btn-label {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: 3px;
+}
+
+.tablet-top-btn-sub {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* --- Back Button --- */
+.tablet-back-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.tablet-back-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(200, 169, 96, 0.08);
+}
+
+.tablet-back-btn:active {
+  transform: scale(0.92);
+}
