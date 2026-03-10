@@ -300,7 +300,7 @@ function renderCastDrinkScreen(app, table, session, params) {
           <div class="tablet-content" style="padding-top:var(--space-xl);">
             <div class="tablet-cast-header">
               <h2>キャストを選択してドリンクを注文</h2>
-              <p>タップするとドリンクが注文されます</p>
+              <p>キャストを選択後、確認画面が表示されます</p>
             </div>
             <div class="tablet-cast-grid">
               ${casts.map(cast => `
@@ -316,6 +316,18 @@ function renderCastDrinkScreen(app, table, session, params) {
 
         ${renderCartFooter()}
         ${renderSuccessOverlay()}
+        
+        <!-- Confirmation Overlay -->
+        <div class="tablet-confirm-overlay" id="cast-confirm-overlay" style="display:none;">
+          <div class="tablet-confirm-content">
+            <h2 id="cast-confirm-title">キャストドリンクの注文</h2>
+            <p id="cast-confirm-msg">さんにドリンクを注文しますか？</p>
+            <div class="tablet-cart-actions" style="border:none;padding:var(--space-xl) 0 0 0;gap:var(--space-md);">
+              <button class="tablet-btn-clear" id="cast-confirm-cancel">キャンセル</button>
+              <button class="tablet-btn-confirm" id="cast-confirm-ok">注文を確定する</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -333,35 +345,54 @@ function renderCastDrinkScreen(app, table, session, params) {
         const cast = store.getById('casts', castId);
         if (!cast || !castDrinkMenu) return;
 
-        store.add('order_items', {
-          sessionId: session.id,
-          tableId: table.id,
-          menuId: castDrinkMenu.id,
-          menuName: `キャストドリンク (${cast.name})`,
-          price: castDrinkMenu.price,
-          quantity: 1,
-          category: 'cast_drink',
-          categoryId: castDrinkMenu.categoryId,
-          castId,
-          castName: cast.name,
-          taxRate: currentSet?.taxRate || taxRate,
-          serviceRate: currentSet?.serviceRate || serviceRate,
-          setId: currentSet?.id,
-          setNumber: currentSet?.setNumber || 1,
-          orderTime: now(),
-          date: todayKey(),
-          cancelled: false,
-          orderedBy: 'tablet'
-        });
+        const overlay = app.querySelector('#cast-confirm-overlay');
+        const msg = app.querySelector('#cast-confirm-msg');
+        if (overlay && msg) {
+          msg.textContent = `${cast.name} さんにドリンクを注文しますか？`;
+          overlay.style.display = 'flex';
+          
+          const cancelBtn = app.querySelector('#cast-confirm-cancel');
+          const okBtn = app.querySelector('#cast-confirm-ok');
+          
+          const closeOverlay = () => {
+            overlay.style.display = 'none';
+          };
+          
+          cancelBtn.onclick = closeOverlay;
+          
+          okBtn.onclick = () => {
+            closeOverlay();
+            store.add('order_items', {
+              sessionId: session.id,
+              tableId: table.id,
+              menuId: castDrinkMenu.id,
+              menuName: `キャストドリンク (${cast.name})`,
+              price: castDrinkMenu.price,
+              quantity: 1,
+              category: 'cast_drink',
+              categoryId: castDrinkMenu.categoryId,
+              castId,
+              castName: cast.name,
+              taxRate: currentSet?.taxRate || taxRate,
+              serviceRate: currentSet?.serviceRate || serviceRate,
+              setId: currentSet?.id,
+              setNumber: currentSet?.setNumber || 1,
+              orderTime: now(),
+              date: todayKey(),
+              cancelled: false,
+              orderedBy: 'tablet'
+            });
 
-        store.addAuditLog('tablet_cast_drink', {
-          sessionId: session.id,
-          tableId: table.id,
-          castId,
-          castName: cast.name
-        });
+            store.addAuditLog('tablet_cast_drink', {
+              sessionId: session.id,
+              tableId: table.id,
+              castId,
+              castName: cast.name
+            });
 
-        showSuccessAnimation(app, () => render());
+            showSuccessAnimation(app, () => render());
+          };
+        }
       });
     });
 

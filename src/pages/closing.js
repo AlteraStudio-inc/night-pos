@@ -7,9 +7,11 @@ import { formatMoney, formatNumber, todayKey, now } from '../utils/format.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
+let cashOnHand = '';
+
 export function renderClosing() {
   renderLayout('', 'closing');
-  setPageTitle('締め作業');
+  setPageTitle('締め作業 - レジクローズ');
 
   const content = document.getElementById('page-content');
   const today = todayKey();
@@ -30,6 +32,7 @@ export function renderClosing() {
   const otherSales = payments.filter(p => p.method === 'other').reduce((s, p) => s + (p.amount || 0), 0);
 
   const totalGuests = sessions.reduce((s, se) => s + (se.guestCount || 0), 0);
+  const averageSpend = totalGuests > 0 ? Math.round(totalSales / totalGuests) : 0;
 
   const todayOrders = store.query('order_items', oi => oi.date === today && !oi.cancelled);
   const totalOrders = todayOrders.length;
@@ -47,150 +50,224 @@ export function renderClosing() {
   });
   const extensionCount = allSets.filter(s => s.setNumber > 1).length;
 
-  content.innerHTML = `
-    ${activeSessions.length > 0 ? `
-    <div style="background:var(--status-warning);border:1px solid var(--status-warning-border);border-radius:var(--radius-lg);padding:var(--space-lg) var(--space-xl);margin-bottom:var(--space-xl);display:flex;align-items:center;gap:var(--space-md);">
-      <i data-lucide="alert-triangle" style="width:20px;height:20px;color:var(--warning);flex-shrink:0;"></i>
-      <span style="color:var(--warning);font-weight:600;">未会計の卓が${activeSessions.length}件あります。締め作業前にすべての卓を会計してください。</span>
-    </div>
-    ` : ''}
+  // Fake static data for layout similarity (normally from state/settings)
+  const taxTotal = Math.round(totalSales * 0.1); 
+  const netSales = totalSales - taxTotal;
+  const openingCash = 40000; // Simulated
+  const expectedCash = openingCash + cashSales;
 
-    ${existingClosing ? `
-    <div style="background:var(--status-completed);border:1px solid var(--status-completed-border);border-radius:var(--radius-lg);padding:var(--space-lg) var(--space-xl);margin-bottom:var(--space-xl);display:flex;align-items:center;gap:var(--space-md);">
-      <i data-lucide="check-circle" style="width:20px;height:20px;color:var(--success);flex-shrink:0;"></i>
-      <span style="color:var(--success);font-weight:600;">本日の締め作業は完了しています</span>
-    </div>
-    ` : ''}
+  function render() {
+    const inputCash = parseInt(cashOnHand || '0', 10);
+    const difference = inputCash - expectedCash;
 
-    <!-- KPI Grid -->
-    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);">
-      <div class="stat-card stat-highlight">
-        <div class="stat-label">売上合計</div>
-        <div class="stat-value">${formatMoney(totalSales)}</div>
+    content.innerHTML = `
+      ${existingClosing ? `
+      <div style="background:var(--status-completed);border:1px solid var(--status-completed-border);border-radius:var(--radius-lg);padding:var(--space-lg) var(--space-xl);margin-bottom:var(--space-xl);display:flex;align-items:center;gap:var(--space-md);">
+        <i data-lucide="check-circle" style="width:20px;height:20px;color:var(--success);flex-shrink:0;"></i>
+        <span style="color:var(--success);font-weight:600;">本日の締め作業は完了しています</span>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">現金</div>
-        <div class="stat-value">${formatMoney(cashSales)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">カード</div>
-        <div class="stat-value">${formatMoney(cardSales)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">その他</div>
-        <div class="stat-value">${formatMoney(otherSales)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">来店組数</div>
-        <div class="stat-value">${sessions.length}<span style="font-size:var(--text-sm);color:var(--text-secondary);">組</span></div>
-      </div>
-    </div>
+      ` : ''}
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-xl);">
-      <!-- Detail Numbers -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title"><i data-lucide="bar-chart-3" style="width:18px;height:18px;color:var(--gold)"></i> 詳細数値</h3>
+      <div class="pos-layout-closing">
+        
+        <!-- Left: Settlement Report -->
+        <div class="pos-col">
+          <div class="pos-col-header" style="background:var(--cyan);color:#fff;border-color:var(--cyan);">
+            <span><i data-lucide="bar-chart-2" style="width:16px;height:16px;vertical-align:middle;"></i> 精算レポート</span>
+          </div>
+          <div class="pos-col-body" style="padding:0;">
+            <ul class="billing-item-list">
+              <li class="billing-item-row"><div class="billing-item-name">組数</div><div class="billing-item-price">${completedSessions.length}組</div></li>
+              <li class="billing-item-row"><div class="billing-item-name">客数</div><div class="billing-item-price">${totalGuests}名</div></li>
+              <li class="billing-item-row"><div class="billing-item-name">客単価</div><div class="billing-item-price">${formatMoney(averageSpend)}</div></li>
+              <li class="billing-item-row"><div class="billing-item-name">総売上点数</div><div class="billing-item-price">${totalOrders}点</div></li>
+              <li class="billing-item-row"><div class="billing-item-name" style="font-weight:800;color:var(--gold);">売上合計</div><div class="billing-item-price" style="font-weight:800;color:var(--gold);">${formatMoney(totalSales)}</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">消費税</div><div class="billing-item-price text-muted">${formatMoney(taxTotal)}</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">純売上</div><div class="billing-item-price text-muted">${formatMoney(netSales)}</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">セット数</div><div class="billing-item-price text-muted">${allSets.length}回</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">延長数</div><div class="billing-item-price text-muted">${extensionCount}回</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">キャストドリンク</div><div class="billing-item-price text-muted">${castDrinkCount}杯</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">シャンパン・ワイン</div><div class="billing-item-price text-muted">${champagneCount + wineCount}本</div></li>
+              <li class="billing-item-row"><div class="billing-item-name text-muted">本指名・同伴</div><div class="billing-item-price text-muted">${honshimeiCount + douhanCount}件</div></li>
+            </ul>
+          </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md);">
-          ${[
-            ['来店人数', totalGuests + '名'],
-            ['会計済み', completedSessions.length + '組'],
-            ['未会計', activeSessions.length + '組'],
-            ['注文総数', totalOrders + '件'],
-            ['セット数', allSets.length + '回'],
-            ['延長数', extensionCount + '回'],
-            ['キャストドリンク', castDrinkCount + '杯'],
-            ['シャンパン', champagneCount + '本'],
-            ['ワイン', wineCount + '本'],
-            ['本指名', honshimeiCount + '件'],
-            ['同伴', douhanCount + '件'],
-          ].map(([label, value]) => `
-            <div style="display:flex;justify-content:space-between;padding:var(--space-md);background:var(--bg-elevated);border-radius:var(--radius-md);">
-              <span style="font-size:var(--text-sm);color:var(--text-secondary);">${label}</span>
-              <strong style="font-family:var(--font-mono);">${value}</strong>
+
+        <!-- Center: Cash Flow History -->
+        <div class="pos-col">
+          <div class="pos-col-header" style="background:var(--cyan);color:#fff;border-color:var(--cyan);">
+            <span><i data-lucide="arrow-left-right" style="width:16px;height:16px;vertical-align:middle;"></i> 入出金履歴</span>
+          </div>
+          <div class="pos-col-body" style="padding:0;">
+            <ul class="billing-item-list">
+              <li class="billing-item-row">
+                <div class="billing-item-name">レジオープン時現金</div>
+                <div class="billing-item-qty">1件</div>
+                <div class="billing-item-price">${formatMoney(openingCash)}</div>
+              </li>
+              <li class="billing-item-row">
+                <div class="billing-item-name">現金売上</div>
+                <div class="billing-item-qty">${payments.filter(p=>p.method==='cash').length}件</div>
+                <div class="billing-item-price">${formatMoney(cashSales)}</div>
+              </li>
+              <div style="padding:var(--space-md);background:var(--bg-elevated);border-bottom:1px solid var(--border-subtle);font-weight:700;display:flex;justify-content:space-between;">
+                <span>現金在高（理論値）</span>
+                <span style="font-family:var(--font-mono);">${formatMoney(expectedCash)}</span>
+              </div>
+              <li class="billing-item-row" style="margin-top:var(--space-sm);">
+                <div class="billing-item-name">クレジット売上</div>
+                <div class="billing-item-qty">${payments.filter(p=>p.method==='card').length}件</div>
+                <div class="billing-item-price">${formatMoney(cardSales)}</div>
+              </li>
+              <li class="billing-item-row">
+                <div class="billing-item-name">その他売上</div>
+                <div class="billing-item-qty">${payments.filter(p=>p.method==='other').length}件</div>
+                <div class="billing-item-price">${formatMoney(otherSales)}</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Right: Register Output / Input -->
+        <div class="pos-col">
+          <div class="pos-col-header" style="background:var(--cyan);color:#fff;border-color:var(--cyan);">
+            <span>レジクローズ時レジ実績入力</span>
+            <span style="font-family:var(--font-mono);">POS: 001</span>
+          </div>
+          <div class="pos-col-body" style="display:flex;flex-direction:column;gap:var(--space-md);">
+            
+            <div style="display:flex;justify-content:flex-end;font-size:var(--text-xs);color:var(--text-tertiary);">差異</div>
+            
+            <!-- Cash Input -->
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:var(--text-sm);font-weight:600;">現金在高</span>
+              <div style="display:flex;align-items:center;gap:var(--space-md);">
+                <div style="width:140px;height:40px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);display:flex;align-items:center;padding:0 var(--space-md);justify-content:flex-end;font-family:var(--font-mono);font-size:var(--text-base);font-weight:700;">
+                  ${formatMoney(inputCash)}
+                </div>
+                <span class="${difference < 0 ? 'text-danger' : difference > 0 ? 'text-success' : 'text-muted'}" style="width:60px;text-align:right;font-family:var(--font-mono);font-weight:700;font-size:var(--text-sm);">
+                  ${difference > 0 ? '+' : ''}${formatMoney(difference)}
+                </span>
+              </div>
             </div>
-          `).join('')}
+            
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-lg);">
+              <span style="font-size:var(--text-xs);color:var(--text-tertiary);">内 レジオープン時現金:</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary);width:140px;text-align:right;margin-right:76px;">${formatMoney(openingCash)}</span>
+            </div>
+
+            <!-- Numpad -->
+            <div class="numpad">
+              <button class="numpad-btn secondary" style="grid-column:span 3;height:40px;font-size:var(--text-sm);" id="copy-expected">理論値を入力</button>
+              <button class="numpad-btn num" data-val="7">7</button>
+              <button class="numpad-btn num" data-val="8">8</button>
+              <button class="numpad-btn num" data-val="9">9</button>
+              <button class="numpad-btn num" data-val="4">4</button>
+              <button class="numpad-btn num" data-val="5">5</button>
+              <button class="numpad-btn num" data-val="6">6</button>
+              <button class="numpad-btn num" data-val="1">1</button>
+              <button class="numpad-btn num" data-val="2">2</button>
+              <button class="numpad-btn num" data-val="3">3</button>
+              <button class="numpad-btn num" data-val="0">0</button>
+              <button class="numpad-btn num" data-val="00">00</button>
+              <button class="numpad-btn clear" data-val="C">C</button>
+            </div>
+
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;text-align:center;">
+              ${activeSessions.length > 0 ? `
+                <div style="color:var(--warning);">
+                  <i data-lucide="alert-triangle" style="width:48px;height:48px;margin-bottom:var(--space-sm);opacity:0.8;"></i>
+                  <h3 style="font-size:var(--text-lg);font-weight:700;margin-bottom:var(--space-xs);">未会計の伝票があります。</h3>
+                  <p style="font-size:var(--text-sm);opacity:0.8;">会計後にレジクローズしてください。</p>
+                </div>
+              ` : `
+                <div style="color:var(--text-tertiary);">
+                  <i data-lucide="check-circle" style="width:48px;height:48px;margin-bottom:var(--space-sm);opacity:0.3;"></i>
+                  <p style="font-size:var(--text-sm);">すべての会計が完了しています。<br>在高を入力して確定してください。</p>
+                </div>
+              `}
+            </div>
+
+          </div>
+          <div class="pos-col-footer">
+            <button class="btn btn-accent btn-xl w-full" id="close-day-btn" ${activeSessions.length > 0 || existingClosing ? 'disabled' : ''} style="min-height:64px;font-size:var(--text-xl);">
+              確定
+            </button>
+          </div>
         </div>
+
       </div>
+    `;
 
-      <!-- Payment Breakdown -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title"><i data-lucide="credit-card" style="width:18px;height:18px;color:var(--cyan)"></i> 決済別内訳</h3>
-        </div>
-        ${payments.length > 0 ? `
-        <table class="data-table">
-          <thead>
-            <tr><th>卓番号</th><th>人数</th><th>決済</th><th class="text-right">金額</th></tr>
-          </thead>
-          <tbody>
-            ${payments.map(p => {
-              const table = store.getById('tables', p.tableId);
-              const methodLabel = { cash: '現金', card: 'カード', other: 'その他' }[p.method];
-              const methodColor = p.method === 'cash' ? 'var(--success)' : p.method === 'card' ? 'var(--cyan)' : 'var(--text-secondary)';
-              return `
-                <tr>
-                  <td><strong>${table?.number || '-'}番</strong></td>
-                  <td>${p.guestCount || '-'}名</td>
-                  <td><span style="color:${methodColor};font-weight:600;">${methodLabel}</span></td>
-                  <td class="text-right money" style="font-weight:700;">${formatMoney(p.amount)}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-        ` : '<div class="empty-state"><p>本日の決済記録がありません</p></div>'}
-      </div>
-    </div>
+    if (window.lucide) lucide.createIcons();
+    attachEvents();
+  }
 
-    <!-- Close Button -->
-    ${!existingClosing ? `
-    <div style="margin-top:var(--space-2xl);text-align:center;">
-      <button class="btn btn-danger btn-xl" id="close-day-btn" ${activeSessions.length > 0 ? 'disabled' : ''} style="min-width:300px;">
-        <i data-lucide="lock"></i> 本日の締めを確定する
-      </button>
-      ${activeSessions.length > 0 ? '<p style="font-size:var(--text-sm);color:var(--text-tertiary);margin-top:var(--space-sm);">未会計卓がある間は締め作業を実行できません</p>' : ''}
-    </div>
-    ` : ''}
-  `;
-
-  if (window.lucide) lucide.createIcons();
-
-  document.getElementById('close-day-btn')?.addEventListener('click', async () => {
-    const confirmed = await showConfirm({
-      title: '日次締め確定',
-      message: '本日の営業を締めますか？',
-      subMessage: `売上合計: ${formatMoney(totalSales)} | ${sessions.length}組 ${totalGuests}名`,
-      type: 'danger',
-      confirmText: '締め確定'
+  function attachEvents() {
+    // Numpad events
+    content.querySelectorAll('.numpad-btn.num').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.dataset.val;
+        if (cashOnHand === '0' || !cashOnHand) cashOnHand = val;
+        else cashOnHand += val;
+        if (cashOnHand.length > 8) cashOnHand = cashOnHand.slice(0, 8);
+        render();
+      });
     });
 
-    if (confirmed) {
-      store.add('daily_closings', {
-        date: today,
-        totalSales,
-        cashSales,
-        cardSales,
-        otherSales,
-        sessionCount: sessions.length,
-        guestCount: totalGuests,
-        completedCount: completedSessions.length,
-        orderCount: totalOrders,
-        setCount: allSets.length,
-        extensionCount,
-        castDrinkCount,
-        champagneCount,
-        wineCount,
-        honshimeiCount,
-        douhanCount,
-        confirmedAt: now(),
-        confirmedBy: store.getCurrentUserId()
-      });
+    content.querySelector('.numpad-btn.clear')?.addEventListener('click', () => {
+      cashOnHand = '';
+      render();
+    });
 
-      store.addAuditLog('daily_close', { date: today, totalSales });
-      showToast('本日の締め作業が完了しました', 'success');
-      renderClosing();
+    content.querySelector('#copy-expected')?.addEventListener('click', () => {
+      cashOnHand = expectedCash.toString();
+      render();
+    });
+
+    const closeBtn = document.getElementById('close-day-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', async () => {
+        const confirmed = await showConfirm({
+          title: '日次締め確定',
+          message: '本日の営業を締め、レジをクローズしますか？',
+          subMessage: `売上合計: ${formatMoney(totalSales)} | 現金在高: ${formatMoney(parseInt(cashOnHand||0))}`,
+          type: 'danger',
+          confirmText: '締め確定'
+        });
+
+        if (confirmed) {
+          store.add('daily_closings', {
+            date: today,
+            totalSales,
+            cashSales,
+            cardSales,
+            otherSales,
+            sessionCount: sessions.length,
+            guestCount: totalGuests,
+            completedCount: completedSessions.length,
+            orderCount: totalOrders,
+            setCount: allSets.length,
+            extensionCount,
+            castDrinkCount,
+            champagneCount,
+            wineCount,
+            honshimeiCount,
+            douhanCount,
+            expectedCash,
+            actualCash: parseInt(cashOnHand||0),
+            cashDifference: parseInt(cashOnHand||0) - expectedCash,
+            confirmedAt: now(),
+            confirmedBy: store.getCurrentUserId()
+          });
+
+          store.addAuditLog('daily_close', { date: today, totalSales });
+          showToast('レジクローズ作業が完了しました', 'success');
+          renderClosing();
+        }
+      });
     }
-  });
+  }
+
+  render();
 }

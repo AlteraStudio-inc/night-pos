@@ -9,6 +9,9 @@ import { calcBillingSummary } from '../utils/calc.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
+let selectedPayment = 'cash';
+let receivedAmount = '';
+
 export function renderBilling(params) {
   const tableId = params.tableId;
   const sessionId = params.sessionId;
@@ -20,167 +23,253 @@ export function renderBilling(params) {
   renderLayout('', 'tables');
   setPageTitle(`会計 - ${table.number}番卓`);
 
-  const settings = store.getSettings();
-  const sets = store.query('session_sets', s => s.sessionId === sessionId);
-  const orderItems = store.query('order_items', oi => oi.sessionId === sessionId && !oi.cancelled);
-  const summary = calcBillingSummary(session, sets, orderItems, settings);
-
-  let selectedPayment = '';
-
   const content = document.getElementById('page-content');
+  
+  // Initialize state
+  selectedPayment = 'cash';
+  receivedAmount = '';
 
   function render() {
+    const settings = store.getSettings();
+    const sets = store.query('session_sets', s => s.sessionId === sessionId);
+    const orderItems = store.query('order_items', oi => oi.sessionId === sessionId && !oi.cancelled);
+    const summary = calcBillingSummary(session, sets, orderItems, settings);
+
+    // Calculate change
+    const cashReceived = parseInt(receivedAmount || '0', 10);
+    const change = cashReceived >= summary.grandTotal ? cashReceived - summary.grandTotal : 0;
+    const missing = cashReceived < summary.grandTotal ? summary.grandTotal - cashReceived : 0;
+
     content.innerHTML = `
-      <div style="margin-bottom:var(--space-lg);">
+      <div style="margin-bottom:var(--space-md);display:flex;align-items:center;justify-content:space-between;">
         <button class="btn btn-ghost" onclick="location.hash='#/tables/${tableId}'">
           <i data-lucide="arrow-left"></i> ${table.number}番卓へ戻る
         </button>
       </div>
 
-      <div class="detail-layout" style="grid-template-columns:1fr 420px;">
-        <!-- Detail Side -->
-        <div class="detail-main">
-          <div class="card mb-xl">
-            <div class="card-header">
-              <h3 class="card-title"><i data-lucide="receipt" style="width:18px;height:18px;color:var(--gold)"></i> 会計明細</h3>
-            </div>
-
-            <!-- Items list -->
-            ${orderItems.length > 0 ? `
-            <table class="data-table">
-              <thead>
-                <tr><th>商品名</th><th class="text-center">数量</th><th class="text-right">単価</th><th class="text-right">小計</th><th class="text-right">税率</th></tr>
-              </thead>
-              <tbody>
-                ${orderItems.map(item => `
-                  <tr>
-                    <td>
-                      ${item.menuName}
-                      ${item.castName ? `<span style="color:var(--gold);font-size:var(--text-xs);">(${item.castName})</span>` : ''}
-                    </td>
-                    <td class="text-center">${item.quantity}</td>
-                    <td class="text-right money">${formatMoney(item.price)}</td>
-                    <td class="text-right money">${formatMoney(item.price * item.quantity)}</td>
-                    <td class="text-right" style="color:var(--text-tertiary);font-size:var(--text-xs);">${(item.taxRate * 100).toFixed(0)}%</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            ` : '<div class="empty-state"><p>注文がありません</p></div>'}
+      <div class="pos-layout">
+        
+        <!-- Left Column: Item List (Cart) -->
+        <div class="pos-col">
+          <div class="pos-col-header">
+            <span>担当者: 店長</span>
+            <span style="color:var(--gold);"><i data-lucide="receipt"></i> 明細</span>
           </div>
+          <div class="pos-col-body" style="padding:0;">
+            <ul class="billing-item-list">
+              <!-- Set Charge -->
+              <li class="billing-item-row">
+                <div class="billing-item-name">セット料金</div>
+                <div class="billing-item-qty">1</div>
+                <div class="billing-item-price">${formatMoney(summary.setCharges)}</div>
+              </li>
+              ${summary.extensionCharges > 0 ? `
+              <li class="billing-item-row">
+                <div class="billing-item-name">延長料金</div>
+                <div class="billing-item-qty">${summary.extensionCount}</div>
+                <div class="billing-item-price">${formatMoney(summary.extensionCharges)}</div>
+              </li>` : ''}
+              
+              <!-- Order Items -->
+              ${orderItems.map(item => `
+              <li class="billing-item-row">
+                <div class="billing-item-name" style="display:flex;flex-direction:column;">
+                  <span>${item.menuName}</span>
+                  ${item.castName ? `<span style="font-size:var(--text-xs);color:var(--text-tertiary);">${item.castName}</span>` : ''}
+                </div>
+                <div class="billing-item-qty">${item.quantity}</div>
+                <div class="billing-item-price">${formatMoney(item.price * item.quantity)}</div>
+              </li>
+              `).join('')}
+            </ul>
+          </div>
+          <div class="pos-col-footer" style="display:flex;gap:var(--space-md);">
+            <button class="btn btn-secondary w-full"><i data-lucide="plus"></i> 注文追加</button>
+            <button class="btn btn-secondary w-full"><i data-lucide="file-text"></i> メモ</button>
+          </div>
+        </div>
 
-          <!-- Payment Method -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title"><i data-lucide="credit-card" style="width:18px;height:18px;color:var(--cyan)"></i> 決済方法</h3>
+        <!-- Center Column: Summary & Payment -->
+        <div class="pos-col">
+          <div class="pos-col-header">
+            <span>計算書</span>
+            <span></span>
+          </div>
+          <div class="pos-col-body">
+            
+            <div class="billing-calc-row">
+              <span>小計</span>
+              <strong>${formatMoney(summary.subtotal)}</strong>
             </div>
-            <div class="payment-grid">
-              <button class="payment-btn ${selectedPayment === 'cash' ? 'selected' : ''}" data-method="cash">
-                <i data-lucide="banknote"></i>
-                現金
-              </button>
-              <button class="payment-btn ${selectedPayment === 'card' ? 'selected' : ''}" data-method="card">
-                <i data-lucide="credit-card"></i>
-                カード
-              </button>
-              <button class="payment-btn ${selectedPayment === 'other' ? 'selected' : ''}" data-method="other">
-                <i data-lucide="smartphone"></i>
-                その他
-              </button>
+            <div class="billing-calc-row">
+              <span style="color:var(--text-tertiary);">サービス料金 (${(summary.serviceTotal / summary.subtotal * 100 || 0).toFixed(0)}%)</span>
+              <span style="color:var(--text-tertiary);">${formatMoney(summary.serviceTotal)}</span>
+            </div>
+            <div class="billing-calc-row">
+              <span style="color:var(--text-tertiary);">消費税 (${(summary.taxTotal / summary.subtotal * 100 || 0).toFixed(0)}%)</span>
+              <span style="color:var(--text-tertiary);">${formatMoney(summary.taxTotal)}</span>
+            </div>
+
+            <div style="margin:var(--space-md) 0;border-bottom:1px solid var(--border-subtle);"></div>
+
+            <div class="billing-calc-row">
+              <span>値割引</span>
+              <strong>¥0</strong>
+            </div>
+            
+            <div class="billing-calc-total">
+              <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+                <span style="font-size:var(--text-sm);font-weight:700;color:var(--text-secondary);">お支払い金額</span>
+                <span style="font-size:var(--text-3xl);font-family:var(--font-mono);font-weight:800;color:var(--gold);line-height:1;">${formatMoney(summary.grandTotal)}</span>
+              </div>
+            </div>
+
+            <div style="font-size:var(--text-xs);color:var(--text-tertiary);margin-bottom:var(--space-xs);font-weight:700;">支払</div>
+            <div style="background:var(--bg-elevated);border-radius:var(--radius-md);padding:var(--space-xl) var(--space-md);text-align:center;color:var(--text-secondary);font-size:var(--text-sm);">
+              ${selectedPayment === 'cash' ? '現金払いが選択されています' : selectedPayment === 'card' ? 'カード払いが選択されています' : 'その他決済が選択されています'}
+            </div>
+
+          </div>
+          <div class="pos-col-footer">
+            <div class="billing-calc-row" style="padding:var(--space-xs) 0;">
+              <span style="color:var(--cyan);">お預かり金額</span>
+              <strong style="color:var(--cyan);font-size:var(--text-xl);">${selectedPayment === 'cash' ? formatMoney(cashReceived) : formatMoney(summary.grandTotal)}</strong>
+            </div>
+            ${selectedPayment === 'cash' && missing > 0 ? `
+            <div class="billing-calc-row" style="padding:var(--space-xs) 0;">
+              <span style="color:var(--danger);">残額</span>
+              <strong style="color:var(--danger);">${formatMoney(missing)}</strong>
+            </div>` : ''}
+            <div class="billing-calc-row" style="padding:var(--space-xs) 0;border-top:1px dashed var(--border-subtle);margin-top:var(--space-xs);">
+              <span>おつり</span>
+              <strong style="font-size:var(--text-xl);">${selectedPayment === 'cash' ? formatMoney(change) : '¥0'}</strong>
             </div>
           </div>
         </div>
 
-        <!-- Billing Summary -->
-        <div class="detail-side">
-          <div class="billing-summary" style="position:sticky;top:0;">
-            <div style="padding:var(--space-lg) var(--space-xl);background:rgba(200,169,96,0.05);border-bottom:1px solid var(--border-subtle);">
-              <div style="font-size:var(--text-sm);font-weight:700;color:var(--text-secondary);">${table.number}番卓 会計</div>
-              <div style="font-size:var(--text-xs);color:var(--text-tertiary);margin-top:4px;">${session.guestCount}名 | ${session.setType === 'first' ? '初回' : '通常'} | セット${sets.length}回</div>
-            </div>
+        <!-- Right Column: Numpad & Actions -->
+        <div class="pos-col">
+          <div class="pos-col-header">
+            <span>顧客: 未登録</span>
+            <span>人数: ${session.guestCount}人</span>
+          </div>
+          <div class="pos-col-body" style="display:flex;flex-direction:column;">
             
-            <div class="billing-row">
-              <span class="billing-label">セット料金</span>
-              <span class="billing-value">${formatMoney(summary.setCharges)}</span>
-            </div>
-            ${summary.extensionCharges > 0 ? `
-            <div class="billing-row">
-              <span class="billing-label">延長料金 (${summary.extensionCount}回)</span>
-              <span class="billing-value">${formatMoney(summary.extensionCharges)}</span>
-            </div>` : ''}
-            ${summary.menuTotal > 0 ? `
-            <div class="billing-row">
-              <span class="billing-label">メニュー注文</span>
-              <span class="billing-value">${formatMoney(summary.menuTotal)}</span>
-            </div>` : ''}
-            ${summary.castDrinkTotal > 0 ? `
-            <div class="billing-row">
-              <span class="billing-label">キャストドリンク (${summary.castDrinkCount}杯)</span>
-              <span class="billing-value">${formatMoney(summary.castDrinkTotal)}</span>
-            </div>` : ''}
-            ${summary.champagneTotal > 0 ? `
-            <div class="billing-row">
-              <span class="billing-label">シャンパン (${summary.champagneCount}本)</span>
-              <span class="billing-value">${formatMoney(summary.champagneTotal)}</span>
-            </div>` : ''}
-            ${summary.wineTotal > 0 ? `
-            <div class="billing-row">
-              <span class="billing-label">ワイン (${summary.wineCount}本)</span>
-              <span class="billing-value">${formatMoney(summary.wineTotal)}</span>
-            </div>` : ''}
+            <button class="btn btn-secondary w-full mb-md" style="min-height:48px;">値引登録</button>
             
-            <div style="border-top:1px solid var(--border-default);"></div>
-            
-            <div class="billing-row">
-              <span class="billing-label">小計</span>
-              <span class="billing-value">${formatMoney(summary.subtotal)}</span>
-            </div>
-            <div class="billing-row">
-              <span class="billing-label">TAX</span>
-              <span class="billing-value">${formatMoney(summary.taxTotal)}</span>
-            </div>
-            <div class="billing-row">
-              <span class="billing-label">サービス料</span>
-              <span class="billing-value">${formatMoney(summary.serviceTotal)}</span>
-            </div>
-            
-            <div class="billing-row billing-total">
-              <span class="billing-label">総合計</span>
-              <span class="billing-value">${formatMoney(summary.grandTotal)}</span>
+            <div class="payment-method-grid">
+              <button class="payment-method-btn ${selectedPayment === 'cash' ? 'active' : ''}" data-method="cash">現金</button>
+              <button class="payment-method-btn ${selectedPayment === 'card' ? 'active' : ''}" data-method="card">カード</button>
+              <button class="payment-method-btn ${selectedPayment === 'other' ? 'active' : ''}" style="grid-column:span 2;" data-method="other">その他支払</button>
             </div>
 
-            <div style="padding:var(--space-xl);">
-              <button class="btn btn-primary btn-xl w-full" id="confirm-billing" ${!selectedPayment ? 'disabled' : ''}>
-                <i data-lucide="check-circle"></i> 会計確定
-              </button>
-              ${!selectedPayment ? '<p style="text-align:center;font-size:var(--text-xs);color:var(--text-tertiary);margin-top:var(--space-sm);">決済方法を選択してください</p>' : ''}
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;">
+              
+              <!-- Display input area -->
+              <div style="background:#000;border-radius:var(--radius-md);padding:var(--space-md) var(--space-lg);display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm);">
+                <span style="color:#fff;font-size:var(--text-lg);font-weight:700;">¥</span>
+                <span style="color:#fff;font-size:var(--text-2xl);font-family:var(--font-mono);font-weight:800;letter-spacing:1px;">${receivedAmount ? parseInt(receivedAmount, 10).toLocaleString() : '0'}</span>
+              </div>
+
+              <!-- Quick amount buttons -->
+              <div class="numpad-control-row">
+                <button class="numpad-btn secondary" style="flex:1;height:48px;font-size:var(--text-base);" data-val="1000">¥1,000</button>
+                <button class="numpad-btn secondary" style="flex:1;height:48px;font-size:var(--text-base);" data-val="5000">¥5,000</button>
+                <button class="numpad-btn secondary" style="flex:1;height:48px;font-size:var(--text-base);" data-val="10000">¥10,000</button>
+              </div>
+
+              <!-- Numpad -->
+              <div class="numpad">
+                <button class="numpad-btn num" data-val="7">7</button>
+                <button class="numpad-btn num" data-val="8">8</button>
+                <button class="numpad-btn num" data-val="9">9</button>
+                <button class="numpad-btn num" data-val="4">4</button>
+                <button class="numpad-btn num" data-val="5">5</button>
+                <button class="numpad-btn num" data-val="6">6</button>
+                <button class="numpad-btn num" data-val="1">1</button>
+                <button class="numpad-btn num" data-val="2">2</button>
+                <button class="numpad-btn num" data-val="3">3</button>
+                <button class="numpad-btn num" data-val="0">0</button>
+                <button class="numpad-btn num" data-val="00">00</button>
+                <button class="numpad-btn clear" data-val="C">C</button>
+              </div>
+
             </div>
           </div>
+          
+          <div class="pos-col-footer">
+            <button class="btn btn-accent btn-xl w-full" id="confirm-billing" style="min-height:64px;font-size:var(--text-xl);">
+              会計完了
+            </button>
+          </div>
         </div>
+
       </div>
     `;
 
     if (window.lucide) lucide.createIcons();
+    attachEvents(summary, cashReceived);
+  }
 
+  function attachEvents(summary, cashReceived) {
     // Payment method selection
-    content.querySelectorAll('.payment-btn').forEach(btn => {
+    content.querySelectorAll('.payment-method-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         selectedPayment = btn.dataset.method;
+        // Reset input on switch
+        if (selectedPayment !== 'cash') receivedAmount = summary.grandTotal.toString();
+        else receivedAmount = '';
         render();
       });
     });
 
+    // Numpad input
+    content.querySelectorAll('.numpad-btn.num').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (selectedPayment !== 'cash') return; // Only allow numpad for cash
+        const val = btn.dataset.val;
+        if (receivedAmount === '0') receivedAmount = val;
+        else receivedAmount += val;
+        
+        // Prevent extremely long numbers
+        if (receivedAmount.length > 8) receivedAmount = receivedAmount.slice(0, 8);
+        render();
+      });
+    });
+
+    // Quick amount shortcut
+    content.querySelectorAll('.numpad-btn.secondary').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (selectedPayment !== 'cash') return;
+        const val = parseInt(btn.dataset.val, 10);
+        let curr = receivedAmount ? parseInt(receivedAmount, 10) : 0;
+        curr += val;
+        receivedAmount = curr.toString();
+        render();
+      });
+    });
+
+    // Numpad Clear
+    content.querySelector('.numpad-btn.clear')?.addEventListener('click', () => {
+      if (selectedPayment !== 'cash') return;
+      receivedAmount = '';
+      render();
+    });
+
     // Confirm billing
     content.querySelector('#confirm-billing')?.addEventListener('click', async () => {
-      if (!selectedPayment) return;
+      if (selectedPayment === 'cash' && cashReceived < summary.grandTotal) {
+        showToast('お預かり金額が不足しています', 'error');
+        return;
+      }
 
       const methodLabels = { cash: '現金', card: 'カード', other: 'その他' };
       const confirmed = await showConfirm({
-        title: '会計確定',
-        message: `${table.number}番卓の会計を確定しますか？`,
+        title: '会計完了',
+        message: `${table.number}番卓の会計を完了しますか？`,
         subMessage: `総合計: ${formatMoney(summary.grandTotal)} / 決済: ${methodLabels[selectedPayment]}`,
         type: 'warning',
-        confirmText: '会計確定'
+        confirmText: '会計完了'
       });
 
       if (confirmed) {
@@ -205,6 +294,7 @@ export function renderBilling(params) {
         });
 
         // End current set
+        const sets = store.query('session_sets', s => s.sessionId === sessionId);
         const currentSet = sets[sets.length - 1];
         if (currentSet) {
           store.update('session_sets', currentSet.id, { endTime: now(), active: false });
