@@ -538,6 +538,45 @@
   color: var(--text-secondary);
 }
 
+/* --- Confirm Overlay (Cast Drink) --- */
+.tablet-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 8, 13, 0.85); /* 半透明の黒背景 */
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90; /* Successより下 */
+  animation: fadeIn 200ms ease;
+}
+
+.tablet-confirm-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3xl);
+  width: 90%;
+  max-width: 500px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tablet-confirm-content h2 {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm);
+}
+
+.tablet-confirm-content p {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-bottom: var(--space-xl);
+}
+
 /* --- Waiting Screen --- */
 .tablet-waiting {
   display: flex;

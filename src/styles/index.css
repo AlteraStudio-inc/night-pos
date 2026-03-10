@@ -1370,16 +1370,17 @@ a {
   display: grid;
   grid-template-columns: 1fr 380px 340px;
   gap: var(--space-md);
-  height: calc(100vh - var(--header-height) - var(--space-2xl) - 40px);
-  min-height: 600px;
+  /* 余裕を持たせたcalcに変更、レスポンシブな縮小を許可 */
+  height: calc(100vh - var(--header-height) - var(--space-xl) * 2 - 50px);
+  min-height: 500px;
 }
 
 .pos-layout-closing {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) 1fr 350px;
   gap: var(--space-md);
-  height: calc(100vh - var(--header-height) - var(--space-2xl) - 40px);
-  min-height: 600px;
+  height: calc(100vh - var(--header-height) - var(--space-xl) * 2);
+  min-height: 500px;
 }
 
 .pos-col {
@@ -1455,6 +1456,7 @@ a {
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-sm);
   margin-top: var(--space-md);
+  flex: 1; /* 高さを親の残りに合わせるよう調整 */
 }
 .numpad-control-row {
   display: flex;
@@ -1470,7 +1472,8 @@ a {
   font-family: var(--font-mono);
   font-size: var(--text-xl);
   font-weight: 700;
-  height: 64px;
+  min-height: 48px; /* 64pxから減らし、ウィンドウ高さに収めやすくする */
+  height: 100%; /* 親グリッドセルの高さを満たす */
   display: flex;
   align-items: center;
   justify-content: center;

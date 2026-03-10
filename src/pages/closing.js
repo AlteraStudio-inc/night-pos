@@ -134,15 +134,15 @@ export function renderClosing() {
             <span>レジクローズ時レジ実績入力</span>
             <span style="font-family:var(--font-mono);">POS: 001</span>
           </div>
-          <div class="pos-col-body" style="display:flex;flex-direction:column;gap:var(--space-md);">
+          <div class="pos-col-body" style="display:flex;flex-direction:column;gap:var(--space-sm);">
             
             <div style="display:flex;justify-content:flex-end;font-size:var(--text-xs);color:var(--text-tertiary);">差異</div>
             
             <!-- Cash Input -->
             <div style="display:flex;align-items:center;justify-content:space-between;">
               <span style="font-size:var(--text-sm);font-weight:600;">現金在高</span>
-              <div style="display:flex;align-items:center;gap:var(--space-md);">
-                <div style="width:140px;height:40px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);display:flex;align-items:center;padding:0 var(--space-md);justify-content:flex-end;font-family:var(--font-mono);font-size:var(--text-base);font-weight:700;">
+              <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                <div style="width:140px;height:38px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);display:flex;align-items:center;padding:0 var(--space-md);justify-content:flex-end;font-family:var(--font-mono);font-size:var(--text-base);font-weight:700;">
                   ${formatMoney(inputCash)}
                 </div>
                 <span class="${difference < 0 ? 'text-danger' : difference > 0 ? 'text-success' : 'text-muted'}" style="width:60px;text-align:right;font-family:var(--font-mono);font-weight:700;font-size:var(--text-sm);">
@@ -151,13 +151,13 @@ export function renderClosing() {
               </div>
             </div>
             
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-lg);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm);">
               <span style="font-size:var(--text-xs);color:var(--text-tertiary);">内 レジオープン時現金:</span>
-              <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary);width:140px;text-align:right;margin-right:76px;">${formatMoney(openingCash)}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-secondary);width:140px;text-align:right;margin-right:70px;">${formatMoney(openingCash)}</span>
             </div>
 
             <!-- Numpad -->
-            <div class="numpad">
+            <div class="numpad" style="margin-top:0;">
               <button class="numpad-btn secondary" style="grid-column:span 3;height:40px;font-size:var(--text-sm);" id="copy-expected">理論値を入力</button>
               <button class="numpad-btn num" data-val="7">7</button>
               <button class="numpad-btn num" data-val="8">8</button>

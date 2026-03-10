@@ -205,6 +205,16 @@ export function renderBilling(params) {
         </div>
 
       </div>
+
+      <!-- Card Auth Overlay -->
+      <div id="card-auth-overlay" style="display:none;position:fixed;inset:0;background:rgba(8,8,13,0.85);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;flex-direction:column;">
+        <div style="background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-xl);padding:var(--space-3xl);text-align:center;width:400px;box-shadow:var(--shadow-xl);">
+          <i data-lucide="credit-card" style="width:64px;height:64px;color:var(--cyan);margin-bottom:var(--space-lg);animation:pulse 1.5s infinite;"></i>
+          <h3 style="font-size:var(--text-2xl);font-weight:700;margin-bottom:var(--space-md);">クレジットカードを<br>端末に通してください</h3>
+          <p style="color:var(--text-tertiary);margin-bottom:var(--space-2xl);">認証中...</p>
+          <button class="btn btn-secondary w-full" id="skip-card-auth">スキップして完了する</button>
+        </div>
+      </div>
     `;
 
     if (window.lucide) lucide.createIcons();
@@ -269,51 +279,70 @@ export function renderBilling(params) {
         message: `${table.number}番卓の会計を完了しますか？`,
         subMessage: `総合計: ${formatMoney(summary.grandTotal)} / 決済: ${methodLabels[selectedPayment]}`,
         type: 'warning',
-        confirmText: '会計完了'
+        confirmText: '会計へ進む'
       });
 
       if (confirmed) {
-        // Record payment
-        store.add('payment_records', {
-          sessionId,
-          tableId,
-          amount: summary.grandTotal,
-          method: selectedPayment,
-          date: todayKey(),
-          summary: { ...summary },
-          guestCount: session.guestCount,
-          confirmedAt: now()
-        });
-
-        // Update session status
-        store.update('table_sessions', sessionId, { 
-          status: 'completed', 
-          completedAt: now(),
-          paymentMethod: selectedPayment,
-          totalAmount: summary.grandTotal
-        });
-
-        // End current set
-        const sets = store.query('session_sets', s => s.sessionId === sessionId);
-        const currentSet = sets[sets.length - 1];
-        if (currentSet) {
-          store.update('session_sets', currentSet.id, { endTime: now(), active: false });
+        if (selectedPayment === 'card') {
+          // Show auth overlay
+          const authOverlay = document.getElementById('card-auth-overlay');
+          const skipBtn = document.getElementById('skip-card-auth');
+          if (authOverlay && skipBtn) {
+            authOverlay.style.display = 'flex';
+            if (window.lucide) lucide.createIcons();
+            
+            skipBtn.onclick = () => {
+              authOverlay.style.display = 'none';
+              processBilling(selectedPayment);
+            };
+          }
+        } else {
+          processBilling(selectedPayment);
         }
-
-        // Reset table status
-        store.update('tables', tableId, { status: 'vacant' });
-
-        store.addAuditLog('billing_complete', {
-          tableId, sessionId,
-          amount: summary.grandTotal,
-          method: selectedPayment,
-          summary
-        });
-
-        showToast(`${table.number}番卓の会計が完了しました (${formatMoney(summary.grandTotal)})`, 'success');
-        router.navigate('/tables');
       }
     });
+
+    function processBilling(paymentMethod) {
+      // Record payment
+      store.add('payment_records', {
+        sessionId,
+        tableId,
+        amount: summary.grandTotal,
+        method: paymentMethod,
+        date: todayKey(),
+        summary: { ...summary },
+        guestCount: session.guestCount,
+        confirmedAt: now()
+      });
+
+      // Update session status
+      store.update('table_sessions', sessionId, { 
+        status: 'completed', 
+        completedAt: now(),
+        paymentMethod: paymentMethod,
+        totalAmount: summary.grandTotal
+      });
+
+      // End current set
+      const sets = store.query('session_sets', s => s.sessionId === sessionId);
+      const currentSet = sets[sets.length - 1];
+      if (currentSet) {
+        store.update('session_sets', currentSet.id, { endTime: now(), active: false });
+      }
+
+      // Reset table status
+      store.update('tables', tableId, { status: 'vacant' });
+
+      store.addAuditLog('billing_complete', {
+        tableId, sessionId,
+        amount: summary.grandTotal,
+        method: paymentMethod,
+        summary
+      });
+
+      showToast(`${table.number}番卓の会計が完了しました (${formatMoney(summary.grandTotal)})`, 'success');
+      router.navigate('/tables');
+    }
   }
 
   render();
