@@ -232,6 +232,43 @@ class StoreManager {
       this.saveSettings(currentSettings);
     }
   }
+
+  // --- Data Management ---
+  clearTransactions() {
+    const collectionsToClear = [
+      'table_sessions',
+      'session_sets',
+      'order_items',
+      'payment_records',
+      'nominations',
+      'audit_logs',
+      'daily_closings',
+      'attendances',
+      'salary_payments'
+    ];
+    collectionsToClear.forEach(col => {
+      localStorage.removeItem(this._key(col));
+      delete this._cache[col];
+    });
+    
+    // Reset table status to vacant
+    const tables = this.getAll('tables').map(t => ({ ...t, status: 'vacant' }));
+    this._save('tables', tables);
+    
+    this.addAuditLog('data_clear_transactions', { timestamp: now() });
+    window.location.reload();
+  }
+
+  clearAll() {
+    // Clear everything with the prefix
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(STORAGE_PREFIX)) {
+        localStorage.removeItem(key);
+      }
+    });
+    this._cache = {};
+    window.location.reload(); // Will trigger initDefaultData on next load
+  }
 }
 
 export const store = new StoreManager();

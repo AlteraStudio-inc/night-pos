@@ -108,10 +108,55 @@ export function renderSettings() {
       <button class="btn btn-primary btn-xl" id="save-settings" style="min-width:200px;">
         <i data-lucide="save"></i> 設定を保存
       </button>
+
+      <!-- Danger Zone / Data Management -->
+      <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(231, 76, 60, 0.2);">
+        <div class="card-header">
+          <h3 class="card-title"><i data-lucide="shield-alert" style="width:18px;height:18px;color:var(--danger)"></i> データ管理（重要）</h3>
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--space-lg);">
+          テストデータや過去の売上データをリセットしたい場合に使用します。この操作は取り消せません。
+        </p>
+        <div style="display:flex;gap:var(--space-md);flex-wrap:wrap;">
+          <button class="btn btn-danger" id="clear-transactions-btn">
+            <i data-lucide="trash-2"></i> 売上履歴・取引データのみ削除
+          </button>
+          <button class="btn btn-secondary" id="factory-reset-btn" style="border-color:var(--danger);color:var(--danger);">
+            <i data-lucide="refresh-ccw"></i> システムを完全に初期化
+          </button>
+        </div>
+      </div>
     </div>
   `;
 
   if (window.lucide) lucide.createIcons();
+
+
+  // Clear Transactions
+  document.getElementById('clear-transactions-btn')?.addEventListener('click', async () => {
+    const { showConfirm } = await import('../components/modal.js');
+    const confirmed = await showConfirm({
+      title: '取引データのリセット',
+      message: '本日の売上、接客履歴、監査ログなどの「動き」に関するデータをすべて削除しますか？',
+      subMessage: '※メニューやキャストの設定は残ります',
+      type: 'danger',
+      confirmText: '削除を実行する'
+    });
+    if (confirmed) store.clearTransactions();
+  });
+
+  // Factory Reset
+  document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
+    const { showConfirm } = await import('../components/modal.js');
+    const confirmed = await showConfirm({
+      title: '完全な初期化',
+      message: 'システムを工場出荷状態に戻しますか？',
+      subMessage: '※メニュー、キャスト、設定を含むすべてのデータが完全に消失します',
+      type: 'danger',
+      confirmText: '完全に初期化する'
+    });
+    if (confirmed) store.clearAll();
+  });
 
   document.getElementById('save-settings')?.addEventListener('click', () => {
     const updated = {
