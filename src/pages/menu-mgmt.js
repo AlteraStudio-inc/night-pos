@@ -59,7 +59,7 @@ function renderMenuContent(container) {
           <tbody>
             ${filtered.map(m => {
               const cat = store.getById('menu_categories', m.categoryId);
-              const typeLabel = { cast_drink: 'キャストドリンク', champagne: 'シャンパン', wine: 'ワイン', menu: 'メニュー' }[m.category] || 'メニュー';
+              const typeLabel = { cast_drink: 'キャストドリンク', champagne: 'シャンパン', wine: 'ワイン', bottle: 'ボトル', supply: '備品', menu: 'メニュー' }[m.category] || 'メニュー';
               return `
                 <tr>
                   <td><strong>${m.name}</strong></td>
@@ -175,7 +175,23 @@ function showMenuModal(menu, mainContainer) {
         <option value="cast_drink" ${isEdit && menu.category === 'cast_drink' ? 'selected' : ''}>キャストドリンク</option>
         <option value="champagne" ${isEdit && menu.category === 'champagne' ? 'selected' : ''}>シャンパン</option>
         <option value="wine" ${isEdit && menu.category === 'wine' ? 'selected' : ''}>ワイン</option>
+        <option value="bottle" ${isEdit && menu.category === 'bottle' ? 'selected' : ''}>ボトル（キープ）</option>
+        <option value="supply" ${isEdit && menu.category === 'supply' ? 'selected' : ''}>備品</option>
       </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:var(--space-sm);">
+          <input type="checkbox" id="modal-menu-free" ${isEdit && menu.isFree ? 'checked' : ''}>
+          無料メニュー
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:var(--space-sm);">
+          <input type="checkbox" id="modal-menu-keep" ${isEdit && menu.isKeep ? 'checked' : ''}>
+          キープ対象
+        </label>
+      </div>
     </div>
   `;
 
@@ -192,14 +208,18 @@ function showMenuModal(menu, mainContainer) {
     const price = parseInt(overlay.querySelector('#modal-menu-price').value);
     const categoryId = overlay.querySelector('#modal-menu-cat').value;
     const category = overlay.querySelector('#modal-menu-type').value;
+    const isFree = overlay.querySelector('#modal-menu-free')?.checked || false;
+    const isKeep = overlay.querySelector('#modal-menu-keep')?.checked || false;
 
     if (!name) { showToast('メニュー名を入力してください', 'error'); return; }
-    if (!price || price < 0) { showToast('正しい価格を入力してください', 'error'); return; }
+    if (!isFree && (!price || price < 0)) { showToast('正しい価格を入力してください', 'error'); return; }
+
+    const menuData = { name, price: isFree ? 0 : (price || 0), categoryId, category, isFree, isKeep };
 
     if (isEdit) {
-      store.update('menus', menu.id, { name, price, categoryId, category });
+      store.update('menus', menu.id, menuData);
     } else {
-      store.add('menus', { name, price, categoryId, category, active: true });
+      store.add('menus', { ...menuData, active: true });
     }
 
     closeModal(overlay);

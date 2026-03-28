@@ -53,7 +53,7 @@ export function renderLayout(pageContent, activeNav = '') {
             </div>
             <div class="nav-item ${activeNav === 'sales' ? 'active' : ''}" data-nav="/sales">
               <i data-lucide="trending-up"></i>
-              <span>売上一覧</span>
+              <span>売上管理</span>
             </div>
           </div>
           <div class="nav-section">

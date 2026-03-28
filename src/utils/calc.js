@@ -39,15 +39,17 @@ export function calcBillingSummary(session, sets, orderItems, settings) {
   // セット料金の合計
   let setCharges = 0;
   let extensionCharges = 0;
+  let douhanFeeTotal = 0;
+
+  // 同伴料金: グループ単位で1件課金
+  if (session.isDouhan) {
+    douhanFeeTotal = session.douhanFee != null ? session.douhanFee : (settings.douhanFee || 5000);
+  }
 
   sets.forEach((set, index) => {
     if (index === 0) {
-      // 最初のセット
-      if (session.isDouhan) {
-        setCharges += (set.setPrice != null ? set.setPrice : (settings.douhanSetPrice || 3000));
-      } else {
-        setCharges += (set.setPrice != null ? set.setPrice : (set.setType === 'first' ? (settings.firstSetPrice || 5000) : (settings.normalSetPrice || 5000)));
-      }
+      // 最初のセット料金（同伴の場合もセット料金は別途）
+      setCharges += (set.setPrice != null ? set.setPrice : (settings.firstSetPrice || 5000));
     } else {
       // 延長
       extensionCharges += (set.extensionPrice != null ? set.extensionPrice : (settings.extensionPrice || 3000));
@@ -100,7 +102,11 @@ export function calcBillingSummary(session, sets, orderItems, settings) {
   const firstSetServiceRate = sets[0]?.serviceRate || 0;
   const setTax = Math.floor(setCharges * firstSetTaxRate);
   const setService = Math.floor(setCharges * firstSetServiceRate);
-  
+
+  // 同伴料金にもTAX/サービス料を適用
+  const douhanTax = Math.floor(douhanFeeTotal * firstSetTaxRate);
+  const douhanService = Math.floor(douhanFeeTotal * firstSetServiceRate);
+
   let extTax = 0;
   let extService = 0;
   sets.forEach((set, i) => {
@@ -111,15 +117,16 @@ export function calcBillingSummary(session, sets, orderItems, settings) {
     }
   });
 
-  taxTotal += setTax + extTax;
-  serviceTotal += setService + extService;
+  taxTotal += setTax + extTax + douhanTax;
+  serviceTotal += setService + extService + douhanService;
 
-  const subtotal = setCharges + extensionCharges + menuTotal + castDrinkTotal + champagneTotal + wineTotal;
+  const subtotal = setCharges + extensionCharges + douhanFeeTotal + menuTotal + castDrinkTotal + champagneTotal + wineTotal;
   const grandTotal = subtotal + taxTotal + serviceTotal;
 
   return {
     setCharges,
     extensionCharges,
+    douhanFeeTotal,
     menuTotal,
     castDrinkTotal,
     champagneTotal,
@@ -159,25 +166,56 @@ export function calcCastDailyPay(attendance, backItems, settings) {
   let drinkBack = 0;
   let champagneBack = 0;
   let wineBack = 0;
+  let nominationBack = 0;
+  let banaiBack = 0;
+  let douhanBack = 0;
+  let bottleBack = 0;
   let otherBack = 0;
+
+  let drinkCount = 0;
+  let champagneCount = 0;
+  let wineCount = 0;
+  let nominationCount = 0;
+  let banaiCount = 0;
+  let douhanCount = 0;
+  let bottleCount = 0;
 
   backItems.forEach(item => {
     switch (item.type) {
       case 'drink':
         drinkBack += (item.backPrice || settings.drinkBackPrice || 500) * item.quantity;
+        drinkCount += item.quantity;
         break;
       case 'champagne':
         champagneBack += (item.backPrice || settings.champagneBackPrice || 1000) * item.quantity;
+        champagneCount += item.quantity;
         break;
       case 'wine':
         wineBack += (item.backPrice || settings.wineBackPrice || 500) * item.quantity;
+        wineCount += item.quantity;
+        break;
+      case 'nomination':
+        nominationBack += (item.backPrice || settings.nominationBackPrice || 1000) * item.quantity;
+        nominationCount += item.quantity;
+        break;
+      case 'banai':
+        banaiBack += (item.backPrice || settings.banaiBackPrice || 500) * item.quantity;
+        banaiCount += item.quantity;
+        break;
+      case 'douhan':
+        douhanBack += (item.backPrice || settings.douhanBackPrice || 1000) * item.quantity;
+        douhanCount += item.quantity;
+        break;
+      case 'bottle':
+        bottleBack += (item.backPrice || settings.bottleBackPrice || 1000) * item.quantity;
+        bottleCount += item.quantity;
         break;
       default:
         otherBack += (item.backPrice || 0) * item.quantity;
     }
   });
 
-  const totalBack = drinkBack + champagneBack + wineBack + otherBack;
+  const totalBack = drinkBack + champagneBack + wineBack + nominationBack + banaiBack + douhanBack + bottleBack + otherBack;
   const grossPay = basePay + totalBack;
   const dailyPayments = attendance.dailyPayments || 0;
   const netPay = grossPay - dailyPayments;
@@ -187,8 +225,19 @@ export function calcCastDailyPay(attendance, backItems, settings) {
     hoursWorked: Math.round(hoursWorked * 100) / 100,
     basePay,
     drinkBack,
+    drinkCount,
     champagneBack,
+    champagneCount,
     wineBack,
+    wineCount,
+    nominationBack,
+    nominationCount,
+    banaiBack,
+    banaiCount,
+    douhanBack,
+    douhanCount,
+    bottleBack,
+    bottleCount,
     otherBack,
     totalBack,
     grossPay,

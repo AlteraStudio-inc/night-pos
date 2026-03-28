@@ -1,18 +1,17 @@
 // ============================================
 // Tablet Order Page - 各卓タブレット設置用 注文専用画面
+// 統合メニュー: フリードリンク/割り物/キープ/ビール/カクテル/ワイン/シャンパン/フード/キャストドリンク/備品
 // ============================================
 import { store } from '../store/index.js';
 import { formatMoney, todayKey, now } from '../utils/format.js';
 
 let currentCategory = 'all';
 let cart = [];
-let currentView = 'top'; // 'top', 'menu', 'cast_drink'
 let pollInterval = null;
 
 export function renderTabletOrder(params) {
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 
-  // params.id は卓番号（1, 2, 3...）
   const tableNumber = parseInt(params.id);
   const app = document.getElementById('app');
 
@@ -22,7 +21,6 @@ export function renderTabletOrder(params) {
     return;
   }
 
-  // 卓番号からテーブルを検索
   const table = store.query('tables', t => t.number === tableNumber && t.active)[0];
 
   if (!table) {
@@ -31,17 +29,13 @@ export function renderTabletOrder(params) {
     return;
   }
 
-  // アクティブなセッションを検索
   const session = store.query('table_sessions', s =>
     s.tableId === table.id && (s.status === 'active' || s.status === 'extended' || s.status === 'billing')
   )[0];
 
   if (!session) {
-    // POS側で卓を開くまで待機
     app.innerHTML = renderPOSWaitingScreen(table);
     if (window.lucide) lucide.createIcons();
-
-    // 3秒ごとにポーリング
     pollInterval = setInterval(() => {
       const newSession = store.query('table_sessions', s =>
         s.tableId === table.id && (s.status === 'active' || s.status === 'extended' || s.status === 'billing')
@@ -55,16 +49,13 @@ export function renderTabletOrder(params) {
     return;
   }
 
-  // 状態リセット
   cart = [];
-  currentView = 'top';
   currentCategory = 'all';
-
-  renderTopMenu(app, table, session, params);
+  renderMenuScreen(app, table, session, params);
 }
 
 // ============================================
-// 待機画面: POS側の操作を待つ
+// 待機画面
 // ============================================
 function renderPOSWaitingScreen(table) {
   return `
@@ -100,92 +91,43 @@ function renderErrorScreen(title, message) {
 }
 
 // ============================================
-// トップメニュー: GRAND MENU / CAST DRINK
-// ============================================
-function renderTopMenu(app, table, session, params) {
-  currentView = 'top';
-
-  app.innerHTML = `
-    <div class="tablet-screen">
-      <!-- Header -->
-      <header class="tablet-header">
-        <div class="tablet-header-left">
-          <div class="tablet-table-badge">${table.number}</div>
-          <div>
-            <div class="tablet-header-title">ご注文</div>
-            <div class="tablet-header-sub">${table.number}番卓</div>
-          </div>
-        </div>
-      </header>
-
-      <!-- Top Menu Buttons -->
-      <div class="tablet-body" style="display:flex;align-items:center;justify-content:center;">
-        <div class="tablet-top-menu">
-          <button class="tablet-top-btn" id="btn-grand-menu">
-            <div class="tablet-top-btn-icon">
-              <i data-lucide="book-open" style="width:48px;height:48px;"></i>
-            </div>
-            <div class="tablet-top-btn-label">GRAND MENU</div>
-            <div class="tablet-top-btn-sub">フード・ドリンクメニュー</div>
-          </button>
-          <button class="tablet-top-btn tablet-top-btn-cast" id="btn-cast-drink">
-            <div class="tablet-top-btn-icon">
-              <i data-lucide="wine" style="width:48px;height:48px;"></i>
-            </div>
-            <div class="tablet-top-btn-label">CAST DRINK</div>
-            <div class="tablet-top-btn-sub">キャストドリンク</div>
-          </button>
-        </div>
-      </div>
-
-      <!-- Cart Footer (if items in cart) -->
-      ${renderCartFooter()}
-
-      ${renderSuccessOverlay()}
-    </div>
-  `;
-
-  if (window.lucide) lucide.createIcons();
-
-  app.querySelector('#btn-grand-menu')?.addEventListener('click', () => {
-    renderMenuScreen(app, table, session, params);
-  });
-
-  app.querySelector('#btn-cast-drink')?.addEventListener('click', () => {
-    renderCastDrinkScreen(app, table, session, params);
-  });
-
-  attachCartEvents(app, table, session, params);
-}
-
-// ============================================
-// GRAND MENU: メニュー注文画面
+// 統合メニュー画面
 // ============================================
 function renderMenuScreen(app, table, session, params) {
-  currentView = 'menu';
-
   const settings = store.getSettings();
-  const categories = store.query('menu_categories', c => !c.isCastDrink).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  const allMenus = store.query('menus', m => m.active && m.category !== 'cast_drink');
+  const categories = store.query('menu_categories', c => true).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  const allMenus = store.query('menus', m => m.active);
+  const casts = store.query('casts', c => c.active);
+
+  // キャストドリンクのメニュー
+  const castDrinkMenu = allMenus.find(m => m.category === 'cast_drink');
+
+  const sets = store.query('session_sets', s => s.sessionId === session.id);
+  const currentSet = sets[sets.length - 1];
+  const taxRate = currentSet?.taxRate || settings.defaultTaxRate;
+  const serviceRate = currentSet?.serviceRate || settings.defaultServiceRate;
 
   function render() {
-    const filteredMenus = currentCategory === 'all'
-      ? allMenus
-      : allMenus.filter(m => m.categoryId === currentCategory);
+    // キャストドリンクカテゴリを判別
+    const castDrinkCat = categories.find(c => c.isCastDrink);
+    const isCastDrinkSelected = currentCategory === castDrinkCat?.id;
 
-    const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+    let filteredMenus = [];
+    if (currentCategory === 'all') {
+      filteredMenus = allMenus.filter(m => m.category !== 'cast_drink');
+    } else if (isCastDrinkSelected) {
+      filteredMenus = [];
+    } else {
+      filteredMenus = allMenus.filter(m => m.categoryId === currentCategory && m.category !== 'cast_drink');
+    }
 
     app.innerHTML = `
       <div class="tablet-screen">
         <header class="tablet-header">
           <div class="tablet-header-left">
-            <button class="tablet-back-btn" id="btn-back">
-              <i data-lucide="arrow-left" style="width:20px;height:20px;"></i>
-            </button>
             <div class="tablet-table-badge">${table.number}</div>
             <div>
-              <div class="tablet-header-title">GRAND MENU</div>
+              <div class="tablet-header-title">MENU</div>
               <div class="tablet-header-sub">${table.number}番卓</div>
             </div>
           </div>
@@ -200,33 +142,72 @@ function renderMenuScreen(app, table, session, params) {
           </nav>
 
           <div class="tablet-content">
-            <div class="tablet-menu-grid">
-              ${filteredMenus.map(menu => {
-                const inCart = cart.find(c => c.menuId === menu.id);
-                return `
-                  <button class="tablet-menu-item ${inCart ? 'in-cart' : ''}" data-menu-id="${menu.id}">
-                    <span class="tablet-menu-name">${menu.name}</span>
-                    <span class="tablet-menu-price">${formatMoney(menu.price)}</span>
-                    ${inCart ? `<span class="tablet-menu-badge">${inCart.quantity}</span>` : ''}
+            ${isCastDrinkSelected ? `
+              <!-- キャストドリンク: キャスト選択グリッド -->
+              <div class="tablet-cast-header">
+                <h2>キャストを選択してドリンクを注文</h2>
+                <p>キャストを選択後、確認画面が表示されます</p>
+              </div>
+              <div class="tablet-cast-grid">
+                ${casts.map(cast => `
+                  <button class="tablet-cast-card" data-cast-id="${cast.id}">
+                    <div class="tablet-cast-avatar">${cast.name.charAt(0)}</div>
+                    <div class="tablet-cast-name">${cast.name}</div>
+                    <div class="tablet-cast-price">${formatMoney(castDrinkMenu?.price || 1000)}</div>
                   </button>
-                `;
-              }).join('')}
-              ${filteredMenus.length === 0 ? '<div class="tablet-empty">このカテゴリにメニューがありません</div>' : ''}
-            </div>
+                `).join('')}
+              </div>
+            ` : `
+              <!-- 通常メニューグリッド -->
+              <div class="tablet-menu-grid">
+                ${filteredMenus.map(menu => {
+                  const inCart = cart.find(c => c.menuId === menu.id && !c.castId);
+                  const freeLabel = menu.isFree ? ' (無料)' : '';
+                  return `
+                    <button class="tablet-menu-item ${inCart ? 'in-cart' : ''}" data-menu-id="${menu.id}">
+                      <span class="tablet-menu-name">${menu.name}${freeLabel}</span>
+                      <span class="tablet-menu-price">${menu.isFree ? '¥0' : formatMoney(menu.price)}</span>
+                      ${inCart ? `<span class="tablet-menu-badge">${inCart.quantity}</span>` : ''}
+                    </button>
+                  `;
+                }).join('')}
+                ${filteredMenus.length === 0 && !isCastDrinkSelected ? '<div class="tablet-empty">このカテゴリにメニューがありません</div>' : ''}
+              </div>
+            `}
           </div>
         </div>
 
         ${renderCartFooter()}
         ${renderSuccessOverlay()}
+
+        <!-- Cast Drink Confirmation Overlay -->
+        <div class="tablet-confirm-overlay" id="cast-confirm-overlay" style="display:none;">
+          <div class="tablet-confirm-content">
+            <h2 id="cast-confirm-title">キャストドリンクの注文</h2>
+            <p id="cast-confirm-msg">さんにドリンクを注文しますか？</p>
+            <div class="tablet-cart-actions" style="border:none;padding:var(--space-xl) 0 0 0;gap:var(--space-md);">
+              <button class="tablet-btn-clear" id="cast-confirm-cancel">キャンセル</button>
+              <button class="tablet-btn-confirm" id="cast-confirm-ok">注文を確定する</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottle/Champagne Cast Selection Overlay -->
+        <div class="tablet-confirm-overlay" id="bottle-cast-overlay" style="display:none;">
+          <div class="tablet-confirm-content" style="max-width:520px;">
+            <h2 id="bottle-cast-title">キャスト選択</h2>
+            <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);">ボトルバック対象のキャストを選択してください</p>
+            <div class="tablet-cast-grid" id="bottle-cast-grid"></div>
+            <div class="tablet-cart-actions" style="border:none;padding:var(--space-xl) 0 0 0;gap:var(--space-md);">
+              <button class="tablet-btn-clear" id="bottle-cast-skip">キャストなしで注文</button>
+              <button class="tablet-btn-clear" id="bottle-cast-cancel">キャンセル</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
     if (window.lucide) lucide.createIcons();
-
-    // Back button
-    app.querySelector('#btn-back')?.addEventListener('click', () => {
-      renderTopMenu(app, table, session, params);
-    });
 
     // Category select
     app.querySelectorAll('.tablet-cat-btn').forEach(btn => {
@@ -243,6 +224,12 @@ function renderMenuScreen(app, table, session, params) {
         const menu = store.getById('menus', menuId);
         if (!menu) return;
 
+        // Keep/Champagne → キャスト選択でボトルバック
+        if (menu.category === 'bottle' || menu.category === 'champagne') {
+          showBottleCastSelect(menu);
+          return;
+        }
+
         const existing = cart.find(c => c.menuId === menuId);
         if (existing) {
           existing.quantity++;
@@ -253,89 +240,13 @@ function renderMenuScreen(app, table, session, params) {
             price: menu.price,
             quantity: 1,
             category: menu.category,
-            categoryId: menu.categoryId
+            categoryId: menu.categoryId,
+            isFree: menu.isFree || false,
+            isKeep: menu.isKeep || false
           });
         }
         render();
       });
-    });
-
-    attachCartEvents(app, table, session, params, render);
-  }
-
-  render();
-}
-
-// ============================================
-// CAST DRINK: キャストドリンク注文画面
-// ============================================
-function renderCastDrinkScreen(app, table, session, params) {
-  currentView = 'cast_drink';
-
-  const settings = store.getSettings();
-  const casts = store.query('casts', c => c.active);
-  const castDrinkMenu = store.query('menus', m => m.active && m.category === 'cast_drink')[0];
-  const sets = store.query('session_sets', s => s.sessionId === session.id);
-  const currentSet = sets[sets.length - 1];
-  const taxRate = currentSet?.taxRate || settings.defaultTaxRate;
-  const serviceRate = currentSet?.serviceRate || settings.defaultServiceRate;
-
-  function render() {
-    app.innerHTML = `
-      <div class="tablet-screen">
-        <header class="tablet-header">
-          <div class="tablet-header-left">
-            <button class="tablet-back-btn" id="btn-back">
-              <i data-lucide="arrow-left" style="width:20px;height:20px;"></i>
-            </button>
-            <div class="tablet-table-badge">${table.number}</div>
-            <div>
-              <div class="tablet-header-title">CAST DRINK</div>
-              <div class="tablet-header-sub">${table.number}番卓</div>
-            </div>
-          </div>
-        </header>
-
-        <div class="tablet-body">
-          <div class="tablet-content" style="padding-top:var(--space-xl);">
-            <div class="tablet-cast-header">
-              <h2>キャストを選択してドリンクを注文</h2>
-              <p>キャストを選択後、確認画面が表示されます</p>
-            </div>
-            <div class="tablet-cast-grid">
-              ${casts.map(cast => `
-                <button class="tablet-cast-card" data-cast-id="${cast.id}">
-                  <div class="tablet-cast-avatar">${cast.name.charAt(0)}</div>
-                  <div class="tablet-cast-name">${cast.name}</div>
-                  <div class="tablet-cast-price">${formatMoney(castDrinkMenu?.price || 1000)}</div>
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-
-        ${renderCartFooter()}
-        ${renderSuccessOverlay()}
-        
-        <!-- Confirmation Overlay -->
-        <div class="tablet-confirm-overlay" id="cast-confirm-overlay" style="display:none;">
-          <div class="tablet-confirm-content">
-            <h2 id="cast-confirm-title">キャストドリンクの注文</h2>
-            <p id="cast-confirm-msg">さんにドリンクを注文しますか？</p>
-            <div class="tablet-cart-actions" style="border:none;padding:var(--space-xl) 0 0 0;gap:var(--space-md);">
-              <button class="tablet-btn-clear" id="cast-confirm-cancel">キャンセル</button>
-              <button class="tablet-btn-confirm" id="cast-confirm-ok">注文を確定する</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    if (window.lucide) lucide.createIcons();
-
-    // Back button
-    app.querySelector('#btn-back')?.addEventListener('click', () => {
-      renderTopMenu(app, table, session, params);
     });
 
     // Cast drink
@@ -350,18 +261,14 @@ function renderCastDrinkScreen(app, table, session, params) {
         if (overlay && msg) {
           msg.textContent = `${cast.name} さんにドリンクを注文しますか？`;
           overlay.style.display = 'flex';
-          
+
           const cancelBtn = app.querySelector('#cast-confirm-cancel');
           const okBtn = app.querySelector('#cast-confirm-ok');
-          
-          const closeOverlay = () => {
-            overlay.style.display = 'none';
-          };
-          
-          cancelBtn.onclick = closeOverlay;
-          
+
+          cancelBtn.onclick = () => { overlay.style.display = 'none'; };
+
           okBtn.onclick = () => {
-            closeOverlay();
+            overlay.style.display = 'none';
             store.add('order_items', {
               sessionId: session.id,
               tableId: table.id,
@@ -373,8 +280,8 @@ function renderCastDrinkScreen(app, table, session, params) {
               categoryId: castDrinkMenu.categoryId,
               castId,
               castName: cast.name,
-              taxRate: currentSet?.taxRate || taxRate,
-              serviceRate: currentSet?.serviceRate || serviceRate,
+              taxRate,
+              serviceRate,
               setId: currentSet?.id,
               setNumber: currentSet?.setNumber || 1,
               orderTime: now(),
@@ -382,14 +289,12 @@ function renderCastDrinkScreen(app, table, session, params) {
               cancelled: false,
               orderedBy: 'tablet'
             });
-
             store.addAuditLog('tablet_cast_drink', {
               sessionId: session.id,
               tableId: table.id,
               castId,
               castName: cast.name
             });
-
             showSuccessAnimation(app, () => render());
           };
         }
@@ -399,11 +304,67 @@ function renderCastDrinkScreen(app, table, session, params) {
     attachCartEvents(app, table, session, params, render);
   }
 
+  // ボトル/シャンパン注文時のキャスト選択オーバーレイ
+  function showBottleCastSelect(menuItem) {
+    const overlay = app.querySelector('#bottle-cast-overlay');
+    const titleEl = app.querySelector('#bottle-cast-title');
+    const grid = app.querySelector('#bottle-cast-grid');
+    if (!overlay || !grid) return;
+
+    titleEl.textContent = menuItem.name + ' \u2014 \u30ad\u30e3\u30b9\u30c8\u9078\u629e';
+    grid.innerHTML = casts.map(cast =>
+      '<button class="tablet-cast-card" data-bcast-id="' + cast.id + '" data-bcast-name="' + cast.name + '">'
+      + '<div class="tablet-cast-avatar">' + cast.name.charAt(0) + '</div>'
+      + '<div class="tablet-cast-name">' + cast.name + '</div>'
+      + '</button>'
+    ).join('');
+
+    overlay.style.display = 'flex';
+
+    grid.querySelectorAll('[data-bcast-id]').forEach(btn => {
+      btn.onclick = () => {
+        addToCartWithCast(menuItem, btn.dataset.bcastId, btn.dataset.bcastName);
+        overlay.style.display = 'none';
+      };
+    });
+
+    app.querySelector('#bottle-cast-skip').onclick = () => {
+      addToCartWithCast(menuItem, null, null);
+      overlay.style.display = 'none';
+    };
+
+    app.querySelector('#bottle-cast-cancel').onclick = () => {
+      overlay.style.display = 'none';
+    };
+  }
+
+  // カートにキャスト付きで追加
+  function addToCartWithCast(menuItem, castId, castName) {
+    const existing = cart.find(c => c.menuId === menuItem.id && (c.castId || null) === (castId || null));
+    if (existing) {
+      existing.quantity++;
+    } else {
+      cart.push({
+        menuId: menuItem.id,
+        name: castName ? menuItem.name + ' (' + castName + ')' : menuItem.name,
+        price: menuItem.price,
+        quantity: 1,
+        category: menuItem.category,
+        categoryId: menuItem.categoryId,
+        isFree: menuItem.isFree || false,
+        isKeep: menuItem.isKeep || false,
+        castId: castId || null,
+        castName: castName || null
+      });
+    }
+    render();
+  }
+
   render();
 }
 
 // ============================================
-// カートフッター（共通）
+// カートフッター
 // ============================================
 function renderCartFooter() {
   if (cart.length === 0) return '';
@@ -422,7 +383,7 @@ function renderCartFooter() {
         <div class="tablet-cart-items">
           ${cart.map((item, i) => `
             <div class="tablet-cart-item">
-              <span class="tablet-cart-item-name">${item.name}</span>
+              <span class="tablet-cart-item-name">${item.name}${item.isFree ? ' (無料)' : ''}</span>
               <div class="tablet-cart-item-controls">
                 <button class="tablet-qty-btn" data-action="minus" data-index="${i}">−</button>
                 <span class="tablet-qty-value">${item.quantity}</span>
@@ -459,18 +420,16 @@ function renderSuccessOverlay() {
 }
 
 // ============================================
-// カートイベント（共通）
+// カートイベント
 // ============================================
 function attachCartEvents(app, table, session, params, rerender) {
   const settings = store.getSettings();
 
-  // Toggle cart detail
   app.querySelector('#toggle-cart')?.addEventListener('click', () => {
     const detail = app.querySelector('#cart-detail');
     if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
   });
 
-  // Qty controls
   app.querySelectorAll('.tablet-qty-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -483,18 +442,14 @@ function attachCartEvents(app, table, session, params, rerender) {
         if (cart[idx].quantity <= 0) cart.splice(idx, 1);
       }
       if (rerender) rerender();
-      else renderTopMenu(app, table, session, params);
     });
   });
 
-  // Clear cart
   app.querySelector('#clear-cart')?.addEventListener('click', () => {
     cart = [];
     if (rerender) rerender();
-    else renderTopMenu(app, table, session, params);
   });
 
-  // Confirm order
   app.querySelector('#confirm-order')?.addEventListener('click', () => {
     if (cart.length === 0) return;
 
@@ -513,8 +468,12 @@ function attachCartEvents(app, table, session, params, rerender) {
         quantity: item.quantity,
         category: item.category,
         categoryId: item.categoryId,
-        taxRate,
-        serviceRate,
+        isFree: item.isFree || false,
+        isKeep: item.isKeep || false,
+        castId: item.castId || null,
+        castName: item.castName || null,
+        taxRate: item.isFree ? 0 : taxRate,
+        serviceRate: item.isFree ? 0 : serviceRate,
         setId: currentSet?.id,
         setNumber: currentSet?.setNumber || 1,
         orderTime: now(),
@@ -533,7 +492,6 @@ function attachCartEvents(app, table, session, params, rerender) {
     cart = [];
     showSuccessAnimation(app, () => {
       if (rerender) rerender();
-      else renderTopMenu(app, table, session, params);
     });
   });
 }

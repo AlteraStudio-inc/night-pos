@@ -117,16 +117,32 @@ export function renderCasts() {
           <input type="number" class="form-input" id="modal-cast-hourly" value="${settings.defaultHourlyRate}" min="0">
         </div>
         <div class="form-group">
-          <label class="form-label">ドリンクバック単価</label>
+          <label class="form-label">ドリンクバック</label>
           <input type="number" class="form-input" id="modal-cast-drink-back" value="${settings.drinkBackPrice}" min="0">
         </div>
         <div class="form-group">
-          <label class="form-label">シャンパンバック単価</label>
+          <label class="form-label">シャンパンバック</label>
           <input type="number" class="form-input" id="modal-cast-champ-back" value="${settings.champagneBackPrice}" min="0">
         </div>
         <div class="form-group">
-          <label class="form-label">ワインバック単価</label>
+          <label class="form-label">ワインバック</label>
           <input type="number" class="form-input" id="modal-cast-wine-back" value="${settings.wineBackPrice}" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">指名バック</label>
+          <input type="number" class="form-input" id="modal-cast-nom-back" value="${settings.nominationBackPrice}" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">場内バック</label>
+          <input type="number" class="form-input" id="modal-cast-banai-back" value="${settings.banaiBackPrice}" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">同伴バック</label>
+          <input type="number" class="form-input" id="modal-cast-douhan-back" value="${settings.douhanBackPrice}" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ボトルバック</label>
+          <input type="number" class="form-input" id="modal-cast-bottle-back" value="${settings.bottleBackPrice}" min="0">
         </div>
       </div>
     `;
@@ -148,6 +164,10 @@ export function renderCasts() {
         drinkBackPrice: parseInt(overlay.querySelector('#modal-cast-drink-back').value) || settings.drinkBackPrice,
         champagneBackPrice: parseInt(overlay.querySelector('#modal-cast-champ-back').value) || settings.champagneBackPrice,
         wineBackPrice: parseInt(overlay.querySelector('#modal-cast-wine-back').value) || settings.wineBackPrice,
+        nominationBackPrice: parseInt(overlay.querySelector('#modal-cast-nom-back').value) || settings.nominationBackPrice,
+        banaiBackPrice: parseInt(overlay.querySelector('#modal-cast-banai-back').value) || settings.banaiBackPrice,
+        douhanBackPrice: parseInt(overlay.querySelector('#modal-cast-douhan-back').value) || settings.douhanBackPrice,
+        bottleBackPrice: parseInt(overlay.querySelector('#modal-cast-bottle-back').value) || settings.bottleBackPrice,
         active: true
       });
 

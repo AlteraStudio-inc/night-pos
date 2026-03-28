@@ -28,16 +28,24 @@ export function renderCastDetail(params) {
   const drinkItems = todayDrinks.filter(oi => oi.category === 'cast_drink');
   const champItems = todayDrinks.filter(oi => oi.category === 'champagne');
   const wineItems = todayDrinks.filter(oi => oi.category === 'wine');
+  const bottleItems = todayDrinks.filter(oi => oi.category === 'bottle');
+
+  // Check nominations today
+  const nominations = store.query('nominations', n => n.castId === castId && n.date === today);
+  const hasHonshimei = nominations.some(n => n.type === 'honshimei');
+  const honshimeiNoms = nominations.filter(n => n.type === 'honshimei');
+  const banaiNoms = nominations.filter(n => n.type === 'banai');
+  const douhanNoms = nominations.filter(n => n.type === 'douhan');
 
   const backItems = [
     ...drinkItems.map(d => ({ type: 'drink', quantity: d.quantity, backPrice: cast.drinkBackPrice })),
     ...champItems.map(d => ({ type: 'champagne', quantity: d.quantity, backPrice: cast.champagneBackPrice })),
-    ...wineItems.map(d => ({ type: 'wine', quantity: d.quantity, backPrice: cast.wineBackPrice }))
+    ...wineItems.map(d => ({ type: 'wine', quantity: d.quantity, backPrice: cast.wineBackPrice })),
+    ...bottleItems.map(d => ({ type: 'bottle', quantity: d.quantity, backPrice: cast.bottleBackPrice || 0 })),
+    ...honshimeiNoms.map(() => ({ type: 'nomination', quantity: 1, backPrice: cast.nominationBackPrice || 0 })),
+    ...banaiNoms.map(() => ({ type: 'banai', quantity: 1, backPrice: cast.banaiBackPrice || 0 })),
+    ...douhanNoms.map(() => ({ type: 'douhan', quantity: 1, backPrice: cast.douhanBackPrice || 0 }))
   ];
-
-  // Check if honshimei today
-  const nominations = store.query('nominations', n => n.castId === castId && n.date === today);
-  const hasHonshimei = nominations.some(n => n.type === 'honshimei');
 
   const attendanceWithMeta = attendance ? { ...attendance, hasHonshimei } : null;
   const payCalc = attendanceWithMeta ? calcCastDailyPay(attendanceWithMeta, backItems, settings) : null;
@@ -128,9 +136,13 @@ export function renderCastDetail(params) {
               <span class="billing-label">時給合計</span>
               <span class="billing-value">${formatMoney(payCalc.basePay)}</span>
             </div>
-            ${payCalc.drinkBack > 0 ? `<div class="billing-row"><span class="billing-label">ドリンクバック</span><span class="billing-value">${formatMoney(payCalc.drinkBack)}</span></div>` : ''}
-            ${payCalc.champagneBack > 0 ? `<div class="billing-row"><span class="billing-label">シャンパンバック</span><span class="billing-value">${formatMoney(payCalc.champagneBack)}</span></div>` : ''}
-            ${payCalc.wineBack > 0 ? `<div class="billing-row"><span class="billing-label">ワインバック</span><span class="billing-value">${formatMoney(payCalc.wineBack)}</span></div>` : ''}
+            ${payCalc.nominationBack > 0 ? `<div class="billing-row"><span class="billing-label">指名バック (${payCalc.nominationCount}本)</span><span class="billing-value">${formatMoney(payCalc.nominationBack)}</span></div>` : ''}
+            ${payCalc.banaiBack > 0 ? `<div class="billing-row"><span class="billing-label">場内バック (${payCalc.banaiCount}本)</span><span class="billing-value">${formatMoney(payCalc.banaiBack)}</span></div>` : ''}
+            ${payCalc.douhanBack > 0 ? `<div class="billing-row"><span class="billing-label">同伴バック (${payCalc.douhanCount}本)</span><span class="billing-value">${formatMoney(payCalc.douhanBack)}</span></div>` : ''}
+            ${payCalc.drinkBack > 0 ? `<div class="billing-row"><span class="billing-label">ドリンクバック (${payCalc.drinkCount}杯)</span><span class="billing-value">${formatMoney(payCalc.drinkBack)}</span></div>` : ''}
+            ${payCalc.champagneBack > 0 ? `<div class="billing-row"><span class="billing-label">シャンパンバック (${payCalc.champagneCount}本)</span><span class="billing-value">${formatMoney(payCalc.champagneBack)}</span></div>` : ''}
+            ${payCalc.wineBack > 0 ? `<div class="billing-row"><span class="billing-label">ワインバック (${payCalc.wineCount}本)</span><span class="billing-value">${formatMoney(payCalc.wineBack)}</span></div>` : ''}
+            ${payCalc.bottleBack > 0 ? `<div class="billing-row"><span class="billing-label">ボトルバック (${payCalc.bottleCount}本)</span><span class="billing-value">${formatMoney(payCalc.bottleBack)}</span></div>` : ''}
             <div class="billing-row">
               <span class="billing-label">総支給額</span>
               <span class="billing-value">${formatMoney(payCalc.grossPay)}</span>

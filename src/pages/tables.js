@@ -77,6 +77,15 @@ function renderTablesContent(container) {
   // Current filter
   const currentFilter = container.dataset.filter || 'all';
 
+  // フィルタリング
+  const filteredData = currentFilter === 'all'
+    ? tableData
+    : tableData.filter(td => td.status === currentFilter);
+
+  const activeFilterCount = tableData.filter(t => t.status === 'active').length;
+  const extendedFilterCount = tableData.filter(t => t.status === 'extended').length;
+  const billingFilterCount = tableData.filter(t => t.status === 'billing').length;
+
   container.innerHTML = `
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -85,10 +94,10 @@ function renderTablesContent(container) {
         <input type="text" class="form-input" id="table-search" placeholder="卓番号で検索...">
       </div>
       <div class="filter-chip ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">すべて (${tableData.length})</div>
+      <div class="filter-chip ${currentFilter === 'active' ? 'active' : ''}" data-filter="active">入店中 (${activeFilterCount})</div>
+      <div class="filter-chip ${currentFilter === 'extended' ? 'active' : ''}" data-filter="extended">延長中 (${extendedFilterCount})</div>
+      <div class="filter-chip ${currentFilter === 'billing' ? 'active' : ''}" data-filter="billing">会計待ち (${billingFilterCount})</div>
       <div class="filter-chip ${currentFilter === 'vacant' ? 'active' : ''}" data-filter="vacant">空席 (${vacantCount})</div>
-      <div class="filter-chip ${currentFilter === 'active' ? 'active' : ''}" data-filter="active">入店中</div>
-      <div class="filter-chip ${currentFilter === 'extended' ? 'active' : ''}" data-filter="extended">延長中</div>
-      <div class="filter-chip ${currentFilter === 'billing' ? 'active' : ''}" data-filter="billing">会計待ち</div>
       <div style="margin-left:auto;">
         <button class="btn btn-primary btn-lg" id="open-table-btn">
           <i data-lucide="plus-circle"></i> 卓を開く
@@ -98,7 +107,7 @@ function renderTablesContent(container) {
 
     <!-- Table Grid -->
     <div class="table-grid" id="tables-grid">
-      ${tableData.map(td => renderTableCard(td)).join('')}
+      ${filteredData.map(td => renderTableCard(td)).join('')}
     </div>
   `;
 
@@ -193,13 +202,17 @@ function renderTableCard(td) {
 function showOpenTableModal() {
   const tables = store.query('tables', t => t.active);
   const vacantTables = tables.filter(t => {
-    const session = store.query('table_sessions', s => 
+    const session = store.query('table_sessions', s =>
       s.tableId === t.id && (s.status === 'active' || s.status === 'extended' || s.status === 'billing')
     );
     return session.length === 0;
   }).sort((a, b) => a.number - b.number);
 
   const settings = store.getSettings();
+  const activeCasts = store.query('casts', c => c.active);
+
+  // セット時間の選択肢（30〜90分）
+  const durationOptions = [30, 40, 45, 50, 60, 70, 80, 90];
 
   const content = `
     <div class="form-group">
@@ -221,17 +234,29 @@ function showOpenTableModal() {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
       <div class="form-group">
-        <label class="form-label">セット種別</label>
-        <select class="form-select" id="modal-set-type">
-          <option value="first">初回</option>
-          <option value="normal">通常（延長）</option>
+        <label class="form-label">セット料金（円）</label>
+        <input type="number" class="form-input" id="modal-set-price" value="${settings.firstSetPrice}" min="0" step="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">セット時間</label>
+        <select class="form-select" id="modal-set-duration">
+          ${durationOptions.map(d => `<option value="${d}" ${d === settings.setDuration ? 'selected' : ''}>${d}分</option>`).join('')}
         </select>
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
       <div class="form-group">
         <label class="form-label">同伴</label>
         <select class="form-select" id="modal-douhan">
           <option value="no">なし</option>
           <option value="yes">あり</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">本指名</label>
+        <select class="form-select" id="modal-honshimei-cast">
+          <option value="">なし</option>
+          ${activeCasts.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -250,7 +275,7 @@ function showOpenTableModal() {
         <label class="form-label">同伴キャスト</label>
         <select class="form-select" id="modal-douhan-cast">
           <option value="">選択してください</option>
-          ${store.query('casts', c => c.active).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+          ${activeCasts.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -263,12 +288,14 @@ function showOpenTableModal() {
     </button>
   `;
 
-  const overlay = showModal({ title: '卓を開く', content, footer });
+  const overlay = showModal({ title: '卓を開く', content, footer, persistent: true });
 
-  // Douhan toggle
+  // Douhan toggle — セット料金もデフォルト変更
   overlay.querySelector('#modal-douhan')?.addEventListener('change', (e) => {
     const section = overlay.querySelector('#douhan-cast-section');
+    const priceInput = overlay.querySelector('#modal-set-price');
     if (section) section.style.display = e.target.value === 'yes' ? '' : 'none';
+    if (priceInput) priceInput.value = e.target.value === 'yes' ? settings.douhanSetPrice : settings.firstSetPrice;
   });
 
   overlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(overlay));
@@ -277,11 +304,13 @@ function showOpenTableModal() {
     const tableId = overlay.querySelector('#modal-table-select').value;
     const guestCount = parseInt(overlay.querySelector('#modal-guest-count').value);
     const entryTimeStr = overlay.querySelector('#modal-entry-time').value;
-    const setType = overlay.querySelector('#modal-set-type').value;
     const isDouhan = overlay.querySelector('#modal-douhan').value === 'yes';
+    const setPrice = parseInt(overlay.querySelector('#modal-set-price').value) || settings.firstSetPrice;
+    const setDuration = parseInt(overlay.querySelector('#modal-set-duration').value) || settings.setDuration;
     const taxRate = parseFloat(overlay.querySelector('#modal-tax-rate').value) / 100;
     const serviceRate = parseFloat(overlay.querySelector('#modal-service-rate').value) / 100;
     const douhanCastId = overlay.querySelector('#modal-douhan-cast')?.value || null;
+    const honshimeiCastId = overlay.querySelector('#modal-honshimei-cast')?.value || null;
 
     // Validation
     if (!tableId) { showToast('卓番号を選択してください', 'error'); return; }
@@ -302,24 +331,24 @@ function showOpenTableModal() {
       date: today,
       guestCount,
       entryTime: entryDate.toISOString(),
-      setType,
+      setType: 'first',
       isDouhan,
       status: 'active',
-      douhanCastId
+      douhanCastId,
+      honshimeiCastId,
+      setDuration,
+      douhanFee: isDouhan ? (settings.douhanFee || 5000) : 0
     });
 
     // Create first set
-    const setPrice = isDouhan 
-      ? (settings.douhanSetPrice || 3000)
-      : (setType === 'first' ? (settings.firstSetPrice || 5000) : (settings.normalSetPrice || 5000));
-
     store.add('session_sets', {
       sessionId: session.id,
       setNumber: 1,
-      setType,
+      setType: 'first',
       taxRate,
       serviceRate,
       setPrice,
+      setDuration,
       startTime: entryDate.toISOString(),
       endTime: null,
       active: true
@@ -339,12 +368,26 @@ function showOpenTableModal() {
       });
     }
 
+    // Add honshimei nomination if applicable
+    if (honshimeiCastId) {
+      store.add('nominations', {
+        sessionId: session.id,
+        tableId,
+        castId: honshimeiCastId,
+        type: 'honshimei',
+        date: today
+      });
+    }
+
     store.addAuditLog('table_open', {
       tableId,
       sessionId: session.id,
       guestCount,
-      setType,
-      isDouhan
+      setType: 'first',
+      isDouhan,
+      setPrice,
+      setDuration,
+      honshimeiCastId
     });
 
     closeModal(overlay);

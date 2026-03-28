@@ -16,7 +16,7 @@ function ensureModalRoot() {
   return modalRoot;
 }
 
-export function showModal({ title, content, size = '', footer = '', onClose }) {
+export function showModal({ title, content, size = '', footer = '', onClose, persistent = false }) {
   const root = ensureModalRoot();
 
   const overlay = document.createElement('div');
@@ -34,13 +34,15 @@ export function showModal({ title, content, size = '', footer = '', onClose }) {
     </div>
   `;
 
-  // Close on overlay click
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      closeModal(overlay);
-      if (onClose) onClose();
-    }
-  });
+  // Close on overlay click (unless persistent)
+  if (!persistent) {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        closeModal(overlay);
+        if (onClose) onClose();
+      }
+    });
+  }
 
   // Close on X button
   overlay.querySelector('.modal-close-btn').addEventListener('click', () => {

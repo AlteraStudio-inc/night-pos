@@ -63,13 +63,19 @@ export function renderBilling(params) {
                 <div class="billing-item-qty">1</div>
                 <div class="billing-item-price">${formatMoney(summary.setCharges)}</div>
               </li>
+              ${summary.douhanFeeTotal > 0 ? `
+              <li class="billing-item-row">
+                <div class="billing-item-name">同伴料金</div>
+                <div class="billing-item-qty">1</div>
+                <div class="billing-item-price">${formatMoney(summary.douhanFeeTotal)}</div>
+              </li>` : ''}
               ${summary.extensionCharges > 0 ? `
               <li class="billing-item-row">
                 <div class="billing-item-name">延長料金</div>
                 <div class="billing-item-qty">${summary.extensionCount}</div>
                 <div class="billing-item-price">${formatMoney(summary.extensionCharges)}</div>
               </li>` : ''}
-              
+
               <!-- Order Items -->
               ${orderItems.map(item => `
               <li class="billing-item-row">
