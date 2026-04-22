@@ -147,7 +147,7 @@ export function calcBillingSummary(session, sets, orderItems, settings) {
 /**
  * キャスト日給計算
  */
-export function calcCastDailyPay(attendance, backItems, settings) {
+export function calcCastDailyPay(attendance, backItems, settings, totalDailyPaid = 0) {
   if (!attendance) return null;
 
   const startTime = new Date(attendance.clockIn);
@@ -217,8 +217,7 @@ export function calcCastDailyPay(attendance, backItems, settings) {
 
   const totalBack = drinkBack + champagneBack + wineBack + nominationBack + banaiBack + douhanBack + bottleBack + otherBack;
   const grossPay = basePay + totalBack;
-  const dailyPayments = attendance.dailyPayments || 0;
-  const netPay = grossPay - dailyPayments;
+  const netPay = grossPay - totalDailyPaid;
 
   return {
     hourlyRate,
@@ -241,7 +240,6 @@ export function calcCastDailyPay(attendance, backItems, settings) {
     otherBack,
     totalBack,
     grossPay,
-    dailyPayments,
     netPay,
     hasSlide: !!attendance.hasHonshimei
   };

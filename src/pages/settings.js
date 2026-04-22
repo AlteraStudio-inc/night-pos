@@ -57,6 +57,10 @@ export function renderSettings() {
             <label class="form-label">同伴時セット料金（1セット目）</label>
             <input type="number" class="form-input" id="set-douhan-price" value="${settings.douhanSetPrice}" min="0">
           </div>
+          <div class="form-group">
+            <label class="form-label">同伴料金（お客様チャージ）</label>
+            <input type="number" class="form-input" id="set-douhan-fee" value="${settings.douhanFee}" min="0">
+          </div>
         </div>
       </div>
 
@@ -142,6 +146,7 @@ export function renderSettings() {
                 <th class="text-right">時給</th>
                 <th class="text-right">ドリンク</th>
                 <th class="text-right">シャンパン</th>
+                <th class="text-right">ワイン</th>
                 <th class="text-right">指名</th>
                 <th class="text-right">場内</th>
                 <th class="text-right">同伴</th>
@@ -156,6 +161,7 @@ export function renderSettings() {
                   <td class="text-right money">${formatMoney(c.hourlyRate)}</td>
                   <td class="text-right money">${formatMoney(c.drinkBackPrice || 0)}</td>
                   <td class="text-right money">${formatMoney(c.champagneBackPrice || 0)}</td>
+                  <td class="text-right money">${formatMoney(c.wineBackPrice || 0)}</td>
                   <td class="text-right money">${formatMoney(c.nominationBackPrice || 0)}</td>
                   <td class="text-right money">${formatMoney(c.banaiBackPrice || 0)}</td>
                   <td class="text-right money">${formatMoney(c.douhanBackPrice || 0)}</td>
@@ -172,7 +178,8 @@ export function renderSettings() {
         </div>
       </div>
 
-      <!-- Test Data Generation -->
+      ${import.meta.env.DEV ? `
+      <!-- Test Data Generation (開発環境のみ表示) -->
       <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(78,205,196,0.25);">
         <div class="card-header">
           <h3 class="card-title"><i data-lucide="flask-conical" style="width:18px;height:18px;color:var(--cyan)"></i> テストデータ</h3>
@@ -185,7 +192,7 @@ export function renderSettings() {
         </button>
       </div>
 
-      <!-- Danger Zone / Data Management -->
+      <!-- Danger Zone / Data Management (開発環境のみ表示) -->
       <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(231, 76, 60, 0.2);">
         <div class="card-header">
           <h3 class="card-title"><i data-lucide="shield-alert" style="width:18px;height:18px;color:var(--danger)"></i> データ管理（重要）</h3>
@@ -202,26 +209,57 @@ export function renderSettings() {
           </button>
         </div>
       </div>
+      ` : ''}
+
+      <!-- Data Management (本番: 売上クリアのみ) -->
+      ${!import.meta.env.DEV ? `
+      <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(231, 76, 60, 0.2);">
+        <div class="card-header">
+          <h3 class="card-title"><i data-lucide="shield-alert" style="width:18px;height:18px;color:var(--danger)"></i> データ管理</h3>
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--space-lg);">
+          売上データをリセットしたい場合に使用します。この操作は取り消せません。
+        </p>
+        <button class="btn btn-danger" id="clear-transactions-btn">
+          <i data-lucide="trash-2"></i> 売上履歴・取引データのみ削除
+        </button>
+      </div>
+      ` : ''}
     </div>
   `;
 
   if (window.lucide) lucide.createIcons();
 
-  // Generate Dummy Data
-  document.getElementById('generate-dummy-btn')?.addEventListener('click', async () => {
-    const { showConfirm } = await import('../components/modal.js');
-    const confirmed = await showConfirm({
-      title: 'ダミーデータの生成',
-      message: '今月分のテスト用ダミーデータを作成しますか？',
-      subMessage: '売上、出勤、日払い、指名などの営業データが生成されます',
-      type: 'warning',
-      confirmText: '作成する'
+  // Generate Dummy Data (開発環境のみ)
+  if (import.meta.env.DEV) {
+    document.getElementById('generate-dummy-btn')?.addEventListener('click', async () => {
+      const { showConfirm } = await import('../components/modal.js');
+      const confirmed = await showConfirm({
+        title: 'ダミーデータの生成',
+        message: '今月分のテスト用ダミーデータを作成しますか？',
+        subMessage: '売上、出勤、日払い、指名などの営業データが生成されます',
+        type: 'warning',
+        confirmText: '作成する'
+      });
+      if (confirmed) {
+        generateDummyData();
+        showToast('ダミーデータを作成しました', 'success');
+      }
     });
-    if (confirmed) {
-      generateDummyData();
-      showToast('ダミーデータを作成しました', 'success');
-    }
-  });
+
+    // Factory Reset (開発環境のみ)
+    document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
+      const { showConfirm } = await import('../components/modal.js');
+      const confirmed = await showConfirm({
+        title: '完全な初期化',
+        message: 'システムを工場出荷状態に戻しますか？',
+        subMessage: '※メニュー、キャスト、設定を含むすべてのデータが完全に消失します',
+        type: 'danger',
+        confirmText: '完全に初期化する'
+      });
+      if (confirmed) store.clearAll();
+    });
+  }
 
   // Clear Transactions
   document.getElementById('clear-transactions-btn')?.addEventListener('click', async () => {
@@ -236,19 +274,6 @@ export function renderSettings() {
     if (confirmed) store.clearTransactions();
   });
 
-  // Factory Reset
-  document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
-    const { showConfirm } = await import('../components/modal.js');
-    const confirmed = await showConfirm({
-      title: '完全な初期化',
-      message: 'システムを工場出荷状態に戻しますか？',
-      subMessage: '※メニュー、キャスト、設定を含むすべてのデータが完全に消失します',
-      type: 'danger',
-      confirmText: '完全に初期化する'
-    });
-    if (confirmed) store.clearAll();
-  });
-
   document.getElementById('save-settings')?.addEventListener('click', () => {
     const updated = {
       storeName: document.getElementById('set-store-name').value.trim(),
@@ -258,7 +283,7 @@ export function renderSettings() {
       normalSetPrice: parseInt(document.getElementById('set-normal-price').value) || 5000,
       extensionPrice: parseInt(document.getElementById('set-ext-price').value) || 3000,
       douhanSetPrice: parseInt(document.getElementById('set-douhan-price').value) || 3000,
-      douhanFee: parseInt(document.getElementById('set-douhan-price').value) || 5000,
+      douhanFee: parseInt(document.getElementById('set-douhan-fee').value) || 5000,
       defaultTaxRate: (parseFloat(document.getElementById('set-tax-rate').value) || 20) / 100,
       defaultServiceRate: (parseFloat(document.getElementById('set-service-rate').value) || 20) / 100,
       defaultHourlyRate: parseInt(document.getElementById('set-hourly').value) || 2000,
@@ -307,6 +332,10 @@ export function renderSettings() {
             <input type="number" class="form-input" id="cp-banai" value="${cast.banaiBackPrice || 0}" min="0">
           </div>
           <div class="form-group">
+            <label class="form-label">ワインバック</label>
+            <input type="number" class="form-input" id="cp-wine" value="${cast.wineBackPrice || 0}" min="0">
+          </div>
+          <div class="form-group">
             <label class="form-label">同伴バック</label>
             <input type="number" class="form-input" id="cp-douhan" value="${cast.douhanBackPrice || 0}" min="0">
           </div>
@@ -327,6 +356,7 @@ export function renderSettings() {
           hourlyRate: parseInt(overlay.querySelector('#cp-hourly').value) || 0,
           drinkBackPrice: parseInt(overlay.querySelector('#cp-drink').value) || 0,
           champagneBackPrice: parseInt(overlay.querySelector('#cp-champ').value) || 0,
+          wineBackPrice: parseInt(overlay.querySelector('#cp-wine').value) || 0,
           nominationBackPrice: parseInt(overlay.querySelector('#cp-nom').value) || 0,
           banaiBackPrice: parseInt(overlay.querySelector('#cp-banai').value) || 0,
           douhanBackPrice: parseInt(overlay.querySelector('#cp-douhan').value) || 0,

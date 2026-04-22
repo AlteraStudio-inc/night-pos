@@ -275,9 +275,15 @@ export function renderSales() {
       const todayNominations = allNominations.filter(n => n.date === today);
 
       let todaysSales = 0;
+      const seenSessions = new Set();
       allNominations.forEach(nom => {
+        if (nom.date !== today) return;
+        if (seenSessions.has(nom.sessionId)) return;
         const session = store.getById('table_sessions', nom.sessionId);
-        if (session && session.totalAmount && nom.date === today) todaysSales += session.totalAmount;
+        if (session && session.totalAmount) {
+          seenSessions.add(nom.sessionId);
+          todaysSales += session.totalAmount;
+        }
       });
 
       const todayDrinks = store.query('order_items', oi => oi.castId === cast.id && oi.date === today && !oi.cancelled);
@@ -419,9 +425,27 @@ function drawDailyLineChart(data) {
     return '\u00a5' + Math.round(n);
   }
 
-  const pts = data.map((d, i) => ({ x: getX(i), y: getY(d.total), total: d.total }));
+  function fmtMoney(n) {
+    return '\u00a5' + n.toLocaleString();
+  }
 
-  function drawFrame(progress) {
+  const pts = data.map((d, i) => ({ x: getX(i), y: getY(d.total), total: d.total, date: d.date }));
+
+  // Hover state
+  let hoverIndex = -1;
+  let animDone = false;
+
+  // Tooltip element
+  let tooltip = container.querySelector('.chart-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.className = 'chart-tooltip';
+    tooltip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(22,22,34,0.95);border:1px solid rgba(200,169,96,0.5);border-radius:6px;padding:8px 12px;font-size:12px;color:#eeeef2;white-space:nowrap;opacity:0;transition:opacity 0.15s;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
+    container.style.position = 'relative';
+    container.appendChild(tooltip);
+  }
+
+  function drawFrame(progress, hovIdx) {
     ctx.clearRect(0, 0, w, h);
 
     // Grid
@@ -481,39 +505,106 @@ function drawDailyLineChart(data) {
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      // Dots
-      pts.forEach(p => {
+      // Hover vertical guide line
+      if (hovIdx >= 0 && hovIdx < pts.length) {
+        ctx.strokeStyle = 'rgba(200,169,96,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#c8a960';
+        ctx.moveTo(pts[hovIdx].x, pad.t);
+        ctx.lineTo(pts[hovIdx].x, pad.t + ch);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Dots
+      pts.forEach((p, i) => {
+        const isHover = i === hovIdx;
+        const outerR = isHover ? 7 : 4.5;
+        const innerR = isHover ? 3 : 2;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, outerR, 0, Math.PI * 2);
+        ctx.fillStyle = isHover ? '#dcc07a' : '#c8a960';
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, innerR, 0, Math.PI * 2);
         ctx.fillStyle = '#161622';
         ctx.fill();
       });
-
-      // Value labels (show if 14 or fewer data points)
-      if (data.length <= 14) {
-        ctx.fillStyle = '#dcc07a';
-        ctx.font = 'bold 10px system-ui,sans-serif';
-        ctx.textAlign = 'center';
-        pts.forEach(p => {
-          ctx.fillText(fmtY(p.total), p.x, p.y - 10);
-        });
-      }
     }
 
     ctx.restore();
   }
+
+  // Mouse interaction
+  function getHoverIndex(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    let closest = -1;
+    let minDist = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = mx - pts[i].x;
+      const dy = my - pts[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist && dist < 30) {
+        minDist = dist;
+        closest = i;
+      }
+    }
+    return closest;
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!animDone) return;
+    const idx = getHoverIndex(e);
+    if (idx === hoverIndex) return;
+    hoverIndex = idx;
+    drawFrame(1, hoverIndex);
+
+    if (idx >= 0 && idx < pts.length) {
+      const p = pts[idx];
+      const dateLabel = p.date.replace(/-/g, '/');
+      tooltip.innerHTML = `<div style="font-weight:700;color:var(--gold-light);margin-bottom:2px;">${dateLabel}</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:800;">${fmtMoney(p.total)}</div>`;
+      tooltip.style.opacity = '1';
+
+      // Position tooltip
+      const tx = p.x;
+      const ty = p.y - 16;
+      const ttW = tooltip.offsetWidth;
+      const ttH = tooltip.offsetHeight;
+      let left = tx - ttW / 2;
+      if (left < 0) left = 4;
+      if (left + ttW > w) left = w - ttW - 4;
+      let top = ty - ttH - 4;
+      if (top < 0) top = ty + 20;
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+
+      canvas.style.cursor = 'pointer';
+    } else {
+      tooltip.style.opacity = '0';
+      canvas.style.cursor = '';
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (!animDone) return;
+    hoverIndex = -1;
+    tooltip.style.opacity = '0';
+    canvas.style.cursor = '';
+    drawFrame(1, -1);
+  });
 
   // Animation
   const dur = 1200;
   const start = performance.now();
   function tick(ts) {
     const p = Math.min((ts - start) / dur, 1);
-    drawFrame(1 - Math.pow(1 - p, 3)); // ease-out cubic
+    drawFrame(1 - Math.pow(1 - p, 3), -1); // ease-out cubic
     if (p < 1) requestAnimationFrame(tick);
+    else animDone = true;
   }
   requestAnimationFrame(tick);
 }

@@ -47,12 +47,12 @@ export function renderCastDetail(params) {
     ...douhanNoms.map(() => ({ type: 'douhan', quantity: 1, backPrice: cast.douhanBackPrice || 0 }))
   ];
 
-  const attendanceWithMeta = attendance ? { ...attendance, hasHonshimei } : null;
-  const payCalc = attendanceWithMeta ? calcCastDailyPay(attendanceWithMeta, backItems, settings) : null;
-
   // Daily payments
   const dailyPayments = store.query('cast_payments', p => p.castId === castId && p.date === today);
   const totalDailyPaid = dailyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  const attendanceWithMeta = attendance ? { ...attendance, hasHonshimei } : null;
+  const payCalc = attendanceWithMeta ? calcCastDailyPay(attendanceWithMeta, backItems, settings, totalDailyPaid) : null;
 
   // Recent nomination history
   const recentNominations = store.query('nominations', n => n.castId === castId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 20);
@@ -150,7 +150,7 @@ export function renderCastDetail(params) {
             ${totalDailyPaid > 0 ? `<div class="billing-row"><span class="billing-label" style="color:var(--danger);">日払い済み</span><span class="billing-value" style="color:var(--danger);">-${formatMoney(totalDailyPaid)}</span></div>` : ''}
             <div class="billing-row billing-total">
               <span class="billing-label">差引支給額</span>
-              <span class="billing-value">${formatMoney(payCalc.grossPay - totalDailyPaid)}</span>
+              <span class="billing-value">${formatMoney(payCalc.netPay)}</span>
             </div>
           </div>
         </div>
@@ -212,40 +212,88 @@ export function renderCastDetail(params) {
 
   if (window.lucide) lucide.createIcons();
 
-  // Clock in
+  // Clock in - show time picker modal
   document.getElementById('btn-clock-in')?.addEventListener('click', () => {
-    store.add('cast_attendance', {
-      castId,
-      date: today,
-      clockIn: now(),
-      clockOut: null,
-      hourlyRate: cast.hourlyRate,
-      hasHonshimei: false,
-      dailyPayments: 0
+    const nowDate = new Date();
+    const defaultTime = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
+
+    const timeContent = `
+      <div class="form-group">
+        <label class="form-label">出勤時間を選択してください</label>
+        <input type="time" class="form-input form-input-lg" id="modal-clockin-time" value="${defaultTime}" style="font-size:var(--text-2xl);text-align:center;">
+      </div>
+      <p style="font-size:var(--text-sm);color:var(--text-tertiary);">デフォルトは現在時刻です。過去の時刻も設定できます。</p>
+    `;
+    const timeFooter = `
+      <button class="btn btn-secondary modal-cancel-btn">キャンセル</button>
+      <button class="btn btn-accent btn-lg" id="modal-clockin-confirm"><i data-lucide="log-in"></i> 出勤を記録</button>
+    `;
+
+    const overlay = showModal({ title: `${cast.name} - 出勤時間`, content: timeContent, footer: timeFooter });
+    if (window.lucide) lucide.createIcons();
+
+    overlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(overlay));
+    overlay.querySelector('#modal-clockin-confirm')?.addEventListener('click', () => {
+      const timeVal = overlay.querySelector('#modal-clockin-time').value;
+      const [h, m] = timeVal.split(':').map(Number);
+      const clockInDate = new Date();
+      clockInDate.setHours(h, m, 0, 0);
+
+      store.add('cast_attendance', {
+        castId,
+        castName: cast.name,
+        date: today,
+        clockIn: clockInDate.toISOString(),
+        clockOut: null,
+        hourlyRate: cast.hourlyRate,
+        hasHonshimei: false,
+        dailyPayments: 0
+      });
+      store.addAuditLog('cast_clock_in', { castId, castName: cast.name, clockIn: clockInDate.toISOString() });
+      closeModal(overlay);
+      showToast(`${cast.name}が出勤しました（${timeVal}）`, 'success');
+      renderCastDetail(params);
     });
-    store.addAuditLog('cast_clock_in', { castId, castName: cast.name });
-    showToast(`${cast.name}が出勤しました`, 'success');
-    renderCastDetail(params);
   });
 
-  // Clock out
-  document.getElementById('btn-clock-out')?.addEventListener('click', async () => {
-    const confirmed = await showConfirm({
-      title: '退勤確認',
-      message: `${cast.name}を退勤させますか？`,
-      subMessage: payCalc ? `本日の給与: ${formatMoney(payCalc.grossPay - totalDailyPaid)}` : '',
-      confirmText: '退勤する'
-    });
-    if (confirmed) {
-      store.update('cast_attendance', attendance.id, { 
-        clockOut: now(), 
+  // Clock out - show time picker modal
+  document.getElementById('btn-clock-out')?.addEventListener('click', () => {
+    const nowDate = new Date();
+    const defaultTime = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
+
+    const timeContent = `
+      <div class="form-group">
+        <label class="form-label">退勤時間を選択してください</label>
+        <input type="time" class="form-input form-input-lg" id="modal-clockout-time" value="${defaultTime}" style="font-size:var(--text-2xl);text-align:center;">
+      </div>
+      <p style="font-size:var(--text-sm);color:var(--text-tertiary);">デフォルトは現在時刻です。過去の時刻も設定できます。</p>
+      ${payCalc ? `<p style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:var(--space-md);">本日の給与: <strong style="color:var(--gold-light);">${formatMoney(payCalc.netPay)}</strong></p>` : ''}
+    `;
+    const timeFooter = `
+      <button class="btn btn-secondary modal-cancel-btn">キャンセル</button>
+      <button class="btn btn-danger btn-lg" id="modal-clockout-confirm"><i data-lucide="log-out"></i> 退勤を記録</button>
+    `;
+
+    const overlay = showModal({ title: `${cast.name} - 退勤時間`, content: timeContent, footer: timeFooter });
+    if (window.lucide) lucide.createIcons();
+
+    overlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(overlay));
+    overlay.querySelector('#modal-clockout-confirm')?.addEventListener('click', () => {
+      const timeVal = overlay.querySelector('#modal-clockout-time').value;
+      const [h, m] = timeVal.split(':').map(Number);
+      const clockOutDate = new Date();
+      clockOutDate.setHours(h, m, 0, 0);
+
+      store.update('cast_attendance', attendance.id, {
+        clockOut: clockOutDate.toISOString(),
         hasHonshimei,
-        finalPay: payCalc ? payCalc.grossPay - totalDailyPaid : 0
+        finalPay: payCalc ? payCalc.netPay : 0
       });
-      store.addAuditLog('cast_clock_out', { castId, castName: cast.name });
-      showToast(`${cast.name}が退勤しました`, 'success');
+      store.addAuditLog('cast_clock_out', { castId, castName: cast.name, clockOut: clockOutDate.toISOString() });
+      closeModal(overlay);
+      showToast(`${cast.name}が退勤しました（${timeVal}）`, 'success');
       renderCastDetail(params);
-    }
+    });
   });
 
   // Daily pay

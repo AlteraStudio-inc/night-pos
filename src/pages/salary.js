@@ -54,9 +54,9 @@ export function renderSalary() {
         ...douhanNoms.map(() => ({ type: 'douhan', quantity: 1, backPrice: cast.douhanBackPrice || 0 }))
       ];
 
-      const payCalc = calcCastDailyPay({ ...attendance, hasHonshimei }, backItems, settings);
       const dailyPayments = store.query('cast_payments', p => p.castId === cast.id && p.date === today);
       const dailyPaid = dailyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const payCalc = calcCastDailyPay({ ...attendance, hasHonshimei }, backItems, settings, dailyPaid);
 
       return { cast, attendance, payCalc, dailyPaid };
     }).filter(d => d.attendance);
@@ -111,7 +111,7 @@ export function renderSalary() {
                 <td class="text-right money">${formatMoney(d.payCalc.totalBack)}</td>
                 <td class="text-right money">${formatMoney(d.payCalc.grossPay)}</td>
                 <td class="text-right money" style="color:var(--danger);">${d.dailyPaid > 0 ? '-' + formatMoney(d.dailyPaid) : '-'}</td>
-                <td class="text-right money" style="font-weight:700;color:var(--gold-light);">${formatMoney(d.payCalc.grossPay - d.dailyPaid)}</td>
+                <td class="text-right money" style="font-weight:700;color:var(--gold-light);">${formatMoney(d.payCalc.netPay)}</td>
                 <td class="text-center">${d.payCalc.hasSlide ? '<span class="badge badge-gold">\u25CF</span>' : '-'}</td>
               </tr>
             `).join('')}

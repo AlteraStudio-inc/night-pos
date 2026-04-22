@@ -13,15 +13,15 @@ let timerInterval = null;
 
 export function renderTables() {
   if (timerInterval) clearInterval(timerInterval);
-  
+
   renderLayout('', 'tables');
   setPageTitle('卓一覧');
 
   const content = document.getElementById('page-content');
   renderTablesContent(content);
-  
-  // Auto-refresh every 30s
-  timerInterval = setInterval(() => renderTablesContent(content), 30000);
+
+  // Auto-refresh every 10s (faster for elapsed time updates)
+  timerInterval = setInterval(() => renderTablesContent(content), 10000);
 }
 
 function renderTablesContent(container) {
@@ -31,7 +31,7 @@ function renderTablesContent(container) {
 
   // Get active sessions for each table
   const tableData = tables.map(table => {
-    const session = store.query('table_sessions', s => 
+    const session = store.query('table_sessions', s =>
       s.tableId === table.id && (s.status === 'active' || s.status === 'extended' || s.status === 'billing')
     )[0];
 
@@ -42,7 +42,7 @@ function renderTablesContent(container) {
     let entryTime = '';
     let estimatedTotal = 0;
     let nominations = [];
-    let setType = '';
+    let setCount = 0;
 
     if (session) {
       status = session.status;
@@ -65,10 +65,10 @@ function renderTablesContent(container) {
       const orderItems = store.query('order_items', oi => oi.sessionId === session.id && !oi.cancelled);
       const summary = calcBillingSummary(session, sets, orderItems, settings);
       estimatedTotal = summary.grandTotal;
-      setType = session.setType;
+      setCount = sets.length;
     }
 
-    return { table, session, status, statusLabel, guestCount, entryTime, elapsed, estimatedTotal, nominations, setType };
+    return { table, session, status, statusLabel, guestCount, entryTime, elapsed, estimatedTotal, nominations, setCount };
   }).sort((a, b) => a.table.number - b.table.number);
 
   const activeCount = tableData.filter(t => t.status !== 'vacant').length;
@@ -85,6 +85,28 @@ function renderTablesContent(container) {
   const activeFilterCount = tableData.filter(t => t.status === 'active').length;
   const extendedFilterCount = tableData.filter(t => t.status === 'extended').length;
   const billingFilterCount = tableData.filter(t => t.status === 'billing').length;
+
+  // 会計済み卓の取得（当日分、会計完了時間降順）
+  // 深夜をまたぐケース（昨日入店→今日会計）も表示するため completedAt のローカル日付もチェック
+  const completedSessions = store.query('table_sessions', s => {
+    if (s.status !== 'completed' || !s.completedAt) return false;
+    if (s.date === today) return true;
+    const cd = new Date(s.completedAt);
+    const completedDate = `${cd.getFullYear()}-${String(cd.getMonth() + 1).padStart(2, '0')}-${String(cd.getDate()).padStart(2, '0')}`;
+    return completedDate === today;
+  }).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+  const completedData = completedSessions.map(session => {
+    const table = store.getById('tables', session.tableId);
+    return {
+      session,
+      tableNumber: table ? table.number : '?',
+      guestCount: session.guestCount,
+      entryTime: formatTime(session.entryTime),
+      completedTime: formatTime(session.completedAt),
+      totalAmount: session.totalAmount || 0
+    };
+  });
 
   container.innerHTML = `
     <!-- Filter Bar -->
@@ -105,9 +127,58 @@ function renderTablesContent(container) {
       </div>
     </div>
 
-    <!-- Table Grid -->
-    <div class="table-grid" id="tables-grid">
-      ${filteredData.map(td => renderTableCard(td)).join('')}
+    <!-- Table List (横1列リスト表示) -->
+    <div class="table-list" id="tables-list">
+      ${filteredData.length > 0 ? `
+        <div class="table-list-header">
+          <div class="tl-col tl-col-number">卓番号</div>
+          <div class="tl-col tl-col-status">ステータス</div>
+          <div class="tl-col tl-col-guests">人数</div>
+          <div class="tl-col tl-col-entry">入店時間</div>
+          <div class="tl-col tl-col-elapsed">経過時間</div>
+          <div class="tl-col tl-col-set">セット</div>
+          <div class="tl-col tl-col-amount">見積金額</div>
+          <div class="tl-col tl-col-nomination">指名</div>
+        </div>
+        ${filteredData.map(td => renderTableRow(td, settings)).join('')}
+      ` : `
+        <div class="empty-state" style="padding:var(--space-3xl);">
+          <i data-lucide="inbox" style="width:36px;height:36px;"></i>
+          <p>該当する卓がありません</p>
+        </div>
+      `}
+    </div>
+
+    <!-- 会計済み卓の履歴（常に表示） -->
+    <div style="margin-top:var(--space-2xl);">
+      <h3 style="font-size:var(--text-lg);font-weight:700;margin-bottom:var(--space-md);display:flex;align-items:center;gap:var(--space-sm);">
+        <i data-lucide="check-circle" style="width:18px;height:18px;color:var(--success);"></i>
+        会計済み（本日 ${completedData.length}組）
+      </h3>
+      <div class="table-list completed-list">
+        <div class="table-list-header completed-header">
+          <div class="tl-col tl-col-number">卓番号</div>
+          <div class="tl-col tl-col-guests">人数</div>
+          <div class="tl-col tl-col-entry">入店時間</div>
+          <div class="tl-col tl-col-completed">会計完了</div>
+          <div class="tl-col tl-col-amount">会計金額</div>
+        </div>
+        ${completedData.length > 0 ? completedData.map(cd => `
+          <div class="table-list-row completed-row">
+            <div class="tl-col tl-col-number">
+              <span class="tl-number">${cd.tableNumber}番</span>
+            </div>
+            <div class="tl-col tl-col-guests">${cd.guestCount}名</div>
+            <div class="tl-col tl-col-entry" style="font-family:var(--font-mono);">${cd.entryTime}</div>
+            <div class="tl-col tl-col-completed" style="font-family:var(--font-mono);">${cd.completedTime}</div>
+            <div class="tl-col tl-col-amount" style="font-family:var(--font-mono);color:var(--gold-light);">${formatMoney(cd.totalAmount)}</div>
+          </div>
+        `).join('') : `
+          <div class="empty-state" style="padding:var(--space-xl);">
+            <p style="color:var(--text-tertiary);font-size:var(--text-sm);">本日の会計済み卓はまだありません</p>
+          </div>
+        `}
+      </div>
     </div>
   `;
 
@@ -121,9 +192,9 @@ function renderTablesContent(container) {
     });
   });
 
-  container.querySelectorAll('.table-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const tableId = card.dataset.tableId;
+  container.querySelectorAll('.table-list-row:not(.completed-row)').forEach(row => {
+    row.addEventListener('click', () => {
+      const tableId = row.dataset.tableId;
       router.navigate('/tables/' + tableId);
     });
   });
@@ -132,19 +203,18 @@ function renderTablesContent(container) {
 
   document.getElementById('table-search')?.addEventListener('input', (e) => {
     const query = e.target.value.trim();
-    container.querySelectorAll('.table-card').forEach(card => {
-      const num = card.querySelector('.tc-number')?.textContent || '';
-      card.style.display = num.includes(query) || !query ? '' : 'none';
+    container.querySelectorAll('.table-list-row:not(.completed-row)').forEach(row => {
+      const num = row.querySelector('.tl-number')?.textContent || '';
+      row.style.display = num.includes(query) || !query ? '' : 'none';
     });
   });
 }
 
-function renderTableCard(td) {
-  const { table, status, statusLabel, guestCount, entryTime, elapsed, estimatedTotal, nominations, setType } = td;
-  
+function renderTableRow(td, settings) {
+  const { table, status, statusLabel, guestCount, entryTime, elapsed, estimatedTotal, nominations, setCount } = td;
+
   const hasHonshimei = nominations.some(n => n.type === 'honshimei');
   const hasDouhan = nominations.some(n => n.type === 'douhan');
-  const settings = store.getSettings();
   const setDuration = settings.setDuration || 60;
 
   let timeClass = '';
@@ -154,47 +224,36 @@ function renderTableCard(td) {
     else if (ratio >= 0.8) timeClass = 'time-warning';
   }
 
-  return `
-    <div class="table-card status-${status === 'billing' ? 'billing' : status}" data-table-id="${table.id}">
-      <div class="tc-header">
-        <div>
-          <div class="tc-number">${table.number}番</div>
-        </div>
-        <span class="badge badge-${status === 'active' ? 'active' : status === 'extended' ? 'extended' : status === 'billing' ? 'billing' : status === 'completed' ? 'completed' : 'vacant'}">${statusLabel}</span>
-      </div>
+  const badgeClass = status === 'active' ? 'badge-active' : status === 'extended' ? 'badge-extended' : status === 'billing' ? 'badge-billing' : 'badge-vacant';
 
-      ${status !== 'vacant' ? `
-        <div class="tc-info">
-          <div>
-            <div class="tc-info-label">人数</div>
-            <div class="tc-info-value">${guestCount}名</div>
-          </div>
-          <div>
-            <div class="tc-info-label">入店</div>
-            <div class="tc-info-value">${entryTime}</div>
-          </div>
-          <div>
-            <div class="tc-info-label">経過</div>
-            <div class="tc-info-value tc-time ${timeClass}">${elapsed}分</div>
-          </div>
-          <div>
-            <div class="tc-info-label">セット</div>
-            <div class="tc-info-value">${setType === 'first' ? '初回' : '通常'}</div>
-          </div>
-        </div>
-        <div class="tc-footer">
-          <div class="tc-amount">${formatMoney(estimatedTotal)}</div>
-          <div style="display:flex;gap:var(--space-sm);">
-            ${hasHonshimei ? '<span class="tc-nomination">★ 本指名</span>' : ''}
-            ${hasDouhan ? '<span class="tc-nomination" style="background:rgba(78,205,196,0.12);border-color:rgba(78,205,196,0.25);color:var(--cyan);">同伴</span>' : ''}
-          </div>
-        </div>
-      ` : `
-        <div style="padding: var(--space-xl) 0; text-align: center; color: var(--text-muted);">
-          <i data-lucide="armchair" style="width:32px;height:32px;margin-bottom:var(--space-sm);opacity:0.3;"></i>
-          <div style="font-size:var(--text-sm);">空席</div>
-        </div>
-      `}
+  return `
+    <div class="table-list-row status-${status === 'billing' ? 'billing' : status}" data-table-id="${table.id}">
+      <div class="tl-col tl-col-number">
+        <span class="tl-number">${table.number}番</span>
+      </div>
+      <div class="tl-col tl-col-status">
+        <span class="badge ${badgeClass}">${statusLabel}</span>
+      </div>
+      <div class="tl-col tl-col-guests">
+        ${status !== 'vacant' ? `${guestCount}名` : '-'}
+      </div>
+      <div class="tl-col tl-col-entry" style="font-family:var(--font-mono);">
+        ${status !== 'vacant' ? entryTime : '-'}
+      </div>
+      <div class="tl-col tl-col-elapsed">
+        ${status !== 'vacant' ? `<span class="tl-elapsed ${timeClass}">経過 ${elapsed}分</span>` : '-'}
+      </div>
+      <div class="tl-col tl-col-set">
+        ${status !== 'vacant' ? `<span class="tl-set-count">${setCount}</span>` : '-'}
+      </div>
+      <div class="tl-col tl-col-amount">
+        ${status !== 'vacant' ? `<span style="font-family:var(--font-mono);color:var(--gold-light);font-weight:700;">${formatMoney(estimatedTotal)}</span>` : '-'}
+      </div>
+      <div class="tl-col tl-col-nomination">
+        ${hasHonshimei ? '<span class="tl-nom-badge">★ 本指名</span>' : ''}
+        ${hasDouhan ? '<span class="tl-nom-badge tl-nom-douhan">同伴</span>' : ''}
+        ${!hasHonshimei && !hasDouhan && status !== 'vacant' ? '-' : ''}
+      </div>
     </div>
   `;
 }

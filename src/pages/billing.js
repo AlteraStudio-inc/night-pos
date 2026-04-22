@@ -8,6 +8,7 @@ import { formatMoney, todayKey, now } from '../utils/format.js';
 import { calcBillingSummary } from '../utils/calc.js';
 import { showConfirm } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
+import { generateReceiptPDF } from '../utils/receipt-pdf.js';
 
 let selectedPayment = 'cash';
 let receivedAmount = '';
@@ -34,6 +35,8 @@ export function renderBilling(params) {
     const sets = store.query('session_sets', s => s.sessionId === sessionId);
     const orderItems = store.query('order_items', oi => oi.sessionId === sessionId && !oi.cancelled);
     const summary = calcBillingSummary(session, sets, orderItems, settings);
+    const displayTaxRate = sets[0]?.taxRate || settings.defaultTaxRate || 0;
+    const displayServiceRate = sets[0]?.serviceRate || settings.defaultServiceRate || 0;
 
     // Calculate change
     const cashReceived = parseInt(receivedAmount || '0', 10);
@@ -89,9 +92,7 @@ export function renderBilling(params) {
               `).join('')}
             </ul>
           </div>
-          <div class="pos-col-footer" style="display:flex;gap:var(--space-md);">
-            <button class="btn btn-secondary w-full"><i data-lucide="plus"></i> 注文追加</button>
-            <button class="btn btn-secondary w-full"><i data-lucide="file-text"></i> メモ</button>
+          <div class="pos-col-footer">
           </div>
         </div>
 
@@ -108,21 +109,16 @@ export function renderBilling(params) {
               <strong>${formatMoney(summary.subtotal)}</strong>
             </div>
             <div class="billing-calc-row">
-              <span style="color:var(--text-tertiary);">サービス料金 (${(summary.serviceTotal / summary.subtotal * 100 || 0).toFixed(0)}%)</span>
+              <span style="color:var(--text-tertiary);">サービス料金 (${(displayServiceRate * 100).toFixed(0)}%)</span>
               <span style="color:var(--text-tertiary);">${formatMoney(summary.serviceTotal)}</span>
             </div>
             <div class="billing-calc-row">
-              <span style="color:var(--text-tertiary);">消費税 (${(summary.taxTotal / summary.subtotal * 100 || 0).toFixed(0)}%)</span>
+              <span style="color:var(--text-tertiary);">消費税 (${(displayTaxRate * 100).toFixed(0)}%)</span>
               <span style="color:var(--text-tertiary);">${formatMoney(summary.taxTotal)}</span>
             </div>
 
             <div style="margin:var(--space-md) 0;border-bottom:1px solid var(--border-subtle);"></div>
 
-            <div class="billing-calc-row">
-              <span>値割引</span>
-              <strong>¥0</strong>
-            </div>
-            
             <div class="billing-calc-total">
               <div style="display:flex;justify-content:space-between;align-items:flex-end;">
                 <span style="font-size:var(--text-sm);font-weight:700;color:var(--text-secondary);">お支払い金額</span>
@@ -160,8 +156,6 @@ export function renderBilling(params) {
             <span>人数: ${session.guestCount}人</span>
           </div>
           <div class="pos-col-body" style="display:flex;flex-direction:column;">
-            
-            <button class="btn btn-secondary w-full mb-md" style="min-height:48px;">値引登録</button>
             
             <div class="payment-method-grid">
               <button class="payment-method-btn ${selectedPayment === 'cash' ? 'active' : ''}" data-method="cash">現金</button>
@@ -308,7 +302,12 @@ export function renderBilling(params) {
       }
     });
 
-    function processBilling(paymentMethod) {
+    async function processBilling(paymentMethod) {
+      const sets = store.query('session_sets', s => s.sessionId === sessionId);
+      const orderItems = store.query('order_items', oi => oi.sessionId === sessionId && !oi.cancelled);
+      const billingSettings = store.getSettings();
+      const billingNominations = store.query('nominations', n => n.sessionId === sessionId);
+
       // Record payment
       store.add('payment_records', {
         sessionId,
@@ -322,15 +321,14 @@ export function renderBilling(params) {
       });
 
       // Update session status
-      store.update('table_sessions', sessionId, { 
-        status: 'completed', 
+      store.update('table_sessions', sessionId, {
+        status: 'completed',
         completedAt: now(),
         paymentMethod: paymentMethod,
         totalAmount: summary.grandTotal
       });
 
       // End current set
-      const sets = store.query('session_sets', s => s.sessionId === sessionId);
       const currentSet = sets[sets.length - 1];
       if (currentSet) {
         store.update('session_sets', currentSet.id, { endTime: now(), active: false });
@@ -347,6 +345,29 @@ export function renderBilling(params) {
       });
 
       showToast(`${table.number}番卓の会計が完了しました (${formatMoney(summary.grandTotal)})`, 'success');
+
+      // 領収書発行確認ダイアログ
+      const issueReceipt = await showConfirm({
+        title: '領収書の発行',
+        message: '領収書を発行しますか？',
+        subMessage: `${table.number}番卓 / ${formatMoney(summary.grandTotal)}`,
+        confirmText: '発行する',
+        cancelText: '発行しない'
+      });
+
+      if (issueReceipt) {
+        generateReceiptPDF({
+          table,
+          session,
+          sets,
+          orderItems,
+          nominations: billingNominations,
+          summary,
+          settings: billingSettings,
+          paymentMethod
+        });
+      }
+
       router.navigate('/tables');
     }
   }
