@@ -178,8 +178,7 @@ export function renderSettings() {
         </div>
       </div>
 
-      ${import.meta.env.DEV ? `
-      <!-- Test Data Generation (開発環境のみ表示) -->
+      <!-- Test Data Generation -->
       <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(78,205,196,0.25);">
         <div class="card-header">
           <h3 class="card-title"><i data-lucide="flask-conical" style="width:18px;height:18px;color:var(--cyan)"></i> テストデータ</h3>
@@ -192,7 +191,7 @@ export function renderSettings() {
         </button>
       </div>
 
-      <!-- Danger Zone / Data Management (開発環境のみ表示) -->
+      <!-- Data Management -->
       <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(231, 76, 60, 0.2);">
         <div class="card-header">
           <h3 class="card-title"><i data-lucide="shield-alert" style="width:18px;height:18px;color:var(--danger)"></i> データ管理（重要）</h3>
@@ -209,57 +208,39 @@ export function renderSettings() {
           </button>
         </div>
       </div>
-      ` : ''}
-
-      <!-- Data Management (本番: 売上クリアのみ) -->
-      ${!import.meta.env.DEV ? `
-      <div class="card" style="margin-top:var(--space-3xl);border-color:rgba(231, 76, 60, 0.2);">
-        <div class="card-header">
-          <h3 class="card-title"><i data-lucide="shield-alert" style="width:18px;height:18px;color:var(--danger)"></i> データ管理</h3>
-        </div>
-        <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:var(--space-lg);">
-          売上データをリセットしたい場合に使用します。この操作は取り消せません。
-        </p>
-        <button class="btn btn-danger" id="clear-transactions-btn">
-          <i data-lucide="trash-2"></i> 売上履歴・取引データのみ削除
-        </button>
-      </div>
-      ` : ''}
     </div>
   `;
 
   if (window.lucide) lucide.createIcons();
 
-  // Generate Dummy Data (開発環境のみ)
-  if (import.meta.env.DEV) {
-    document.getElementById('generate-dummy-btn')?.addEventListener('click', async () => {
-      const { showConfirm } = await import('../components/modal.js');
-      const confirmed = await showConfirm({
-        title: 'ダミーデータの生成',
-        message: '今月分のテスト用ダミーデータを作成しますか？',
-        subMessage: '売上、出勤、日払い、指名などの営業データが生成されます',
-        type: 'warning',
-        confirmText: '作成する'
-      });
-      if (confirmed) {
-        generateDummyData();
-        showToast('ダミーデータを作成しました', 'success');
-      }
+  // Generate Dummy Data
+  document.getElementById('generate-dummy-btn')?.addEventListener('click', async () => {
+    const { showConfirm } = await import('../components/modal.js');
+    const confirmed = await showConfirm({
+      title: 'ダミーデータの生成',
+      message: '今月分のテスト用ダミーデータを作成しますか？',
+      subMessage: '売上、出勤、日払い、指名などの営業データが生成されます',
+      type: 'warning',
+      confirmText: '作成する'
     });
+    if (confirmed) {
+      generateDummyData();
+      showToast('ダミーデータを作成しました', 'success');
+    }
+  });
 
-    // Factory Reset (開発環境のみ)
-    document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
-      const { showConfirm } = await import('../components/modal.js');
-      const confirmed = await showConfirm({
-        title: '完全な初期化',
-        message: 'システムを工場出荷状態に戻しますか？',
-        subMessage: '※メニュー、キャスト、設定を含むすべてのデータが完全に消失します',
-        type: 'danger',
-        confirmText: '完全に初期化する'
-      });
-      if (confirmed) store.clearAll();
+  // Factory Reset
+  document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
+    const { showConfirm } = await import('../components/modal.js');
+    const confirmed = await showConfirm({
+      title: '完全な初期化',
+      message: 'システムを工場出荷状態に戻しますか？',
+      subMessage: '※メニュー、キャスト、設定を含むすべてのデータが完全に消失します',
+      type: 'danger',
+      confirmText: '完全に初期化する'
     });
-  }
+    if (confirmed) store.clearAll();
+  });
 
   // Clear Transactions
   document.getElementById('clear-transactions-btn')?.addEventListener('click', async () => {
