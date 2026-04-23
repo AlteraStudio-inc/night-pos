@@ -17,8 +17,14 @@ export function renderSales() {
   // 日別期間
   let dateFrom = today;
   let dateTo = today;
+  // 週間期間（デフォルトは今週月曜〜日曜）
+  const { weekStart: defaultWeekStart, weekEnd: defaultWeekEnd } = getCurrentWeekRange(today);
+  let weekStart = defaultWeekStart;
+  let weekEnd = defaultWeekEnd;
   // 現在タブ
   let activeTab = 'daily';
+  // キャスト別タブの期間切替
+  let castPeriod = 'daily'; // 'daily' | 'weekly' | 'monthly'
   // チャート用データ
   let _dailyChartData = [];
 
@@ -27,11 +33,13 @@ export function renderSales() {
       <!-- Tabs -->
       <div class="filter-bar" style="margin-bottom:var(--space-xl);">
         <div class="filter-chip ${activeTab === 'daily' ? 'active' : ''}" data-tab="daily">日別売上</div>
+        <div class="filter-chip ${activeTab === 'weekly' ? 'active' : ''}" data-tab="weekly">週間集計</div>
         <div class="filter-chip ${activeTab === 'monthly' ? 'active' : ''}" data-tab="monthly">月間集計</div>
         <div class="filter-chip ${activeTab === 'cast' ? 'active' : ''}" data-tab="cast">キャスト別</div>
       </div>
 
       ${activeTab === 'daily' ? renderDailyTab() : ''}
+      ${activeTab === 'weekly' ? renderWeeklyTab() : ''}
       ${activeTab === 'monthly' ? renderMonthlyTab() : ''}
       ${activeTab === 'cast' ? renderCastTab() : ''}
     `;
@@ -86,7 +94,7 @@ export function renderSales() {
     return `
       <div class="card mb-xl">
         <div class="card-header">
-          <h3 class="card-title"><i data-lucide="calendar" style="width:18px;height:18px;color:var(--gold)"></i> 期間指定</h3>
+          <h3 class="card-title"><i data-lucide="calendar" style="width:18px;height:18px;color:#ffffff"></i> 期間指定</h3>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-lg);align-items:end;">
           <div class="form-group" style="margin:0;">
@@ -164,6 +172,124 @@ export function renderSales() {
     `;
   }
 
+  function renderWeeklyTab() {
+    // 期間指定された週の日別データ
+    const allPayments = store.query('payment_records', p => p.date >= weekStart && p.date <= weekEnd);
+
+    // 日付ごとにグループ化
+    const dailyMap = {};
+    for (let d = new Date(weekStart); d <= new Date(weekEnd); d.setDate(d.getDate() + 1)) {
+      const dk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dailyMap[dk] = { date: dk, total: 0, cash: 0, card: 0, other: 0, sessions: 0, guests: 0 };
+    }
+    allPayments.forEach(p => {
+      if (!dailyMap[p.date]) return;
+      dailyMap[p.date].total += p.amount || 0;
+      if (p.method === 'cash') dailyMap[p.date].cash += p.amount || 0;
+      else if (p.method === 'card') dailyMap[p.date].card += p.amount || 0;
+      else dailyMap[p.date].other += p.amount || 0;
+      dailyMap[p.date].sessions++;
+      dailyMap[p.date].guests += p.guestCount || 0;
+    });
+
+    const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+    const weekTotal = dailyData.reduce((s, d) => s + d.total, 0);
+    const weekCash = dailyData.reduce((s, d) => s + d.cash, 0);
+    const weekCard = dailyData.reduce((s, d) => s + d.card, 0);
+    const weekOther = dailyData.reduce((s, d) => s + d.other, 0);
+    const weekSessions = dailyData.reduce((s, d) => s + d.sessions, 0);
+    const weekGuests = dailyData.reduce((s, d) => s + d.guests, 0);
+
+    // 週選択肢を生成（過去12週）
+    const weekOptions = generateWeekOptions(12);
+
+    // 曜日ラベル
+    const dayOfWeekLabels = ['日', '月', '火', '水', '木', '金', '土'];
+
+    return `
+      <div class="card mb-xl">
+        <div class="card-header">
+          <h3 class="card-title"><i data-lucide="calendar" style="width:18px;height:18px;color:#ffffff"></i> 週選択</h3>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:var(--space-lg);align-items:end;">
+          <div class="form-group" style="margin:0;">
+            <select class="form-select" id="week-select">
+              ${weekOptions.map(w => `<option value="${w.start}|${w.end}" ${w.start === weekStart && w.end === weekEnd ? 'selected' : ''}>${w.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--text-tertiary);margin-top:var(--space-md);">期間: ${formatDate(weekStart)} 〜 ${formatDate(weekEnd)}</p>
+      </div>
+
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:var(--space-xl);">
+        <div class="stat-card stat-highlight">
+          <div class="stat-label">週間売上合計</div>
+          <div class="stat-value">${formatMoney(weekTotal)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">現金売上</div>
+          <div class="stat-value">${formatMoney(weekCash)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">組数</div>
+          <div class="stat-value">${weekSessions}組</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">客数</div>
+          <div class="stat-value">${weekGuests}名</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">日別内訳</h3>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th class="text-center">曜日</th>
+              <th class="text-right">売上</th>
+              <th class="text-right">現金</th>
+              <th class="text-right">カード</th>
+              <th class="text-right">その他</th>
+              <th class="text-center">組数</th>
+              <th class="text-center">客数</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dailyData.map(d => {
+              const dateObj = new Date(d.date);
+              const dayIdx = dateObj.getDay();
+              const dayColor = dayIdx === 0 ? 'var(--danger)' : dayIdx === 6 ? 'var(--cyan)' : 'var(--text-primary)';
+              return `
+                <tr>
+                  <td><strong>${formatDate(d.date)}</strong></td>
+                  <td class="text-center" style="color:${dayColor};font-weight:700;">${dayOfWeekLabels[dayIdx]}</td>
+                  <td class="text-right money" style="font-weight:700;color:${d.total > 0 ? 'var(--gold-light)' : 'var(--text-tertiary)'};">${formatMoney(d.total)}</td>
+                  <td class="text-right money">${formatMoney(d.cash)}</td>
+                  <td class="text-right money">${formatMoney(d.card)}</td>
+                  <td class="text-right money">${formatMoney(d.other)}</td>
+                  <td class="text-center">${d.sessions}</td>
+                  <td class="text-center">${d.guests}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr style="border-top:2px solid var(--border-default);">
+              <td colspan="2"><strong>合計</strong></td>
+              <td class="text-right money" style="font-weight:700;color:var(--gold-light);">${formatMoney(weekTotal)}</td>
+              <td class="text-right money">${formatMoney(weekCash)}</td>
+              <td class="text-right money">${formatMoney(weekCard)}</td>
+              <td class="text-right money">${formatMoney(weekOther)}</td>
+              <td class="text-center"><strong>${weekSessions}</strong></td>
+              <td class="text-center"><strong>${weekGuests}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function renderMonthlyTab() {
     // 指定月のデータを集計
     const monthPrefix = currentMonth; // "YYYY-MM"
@@ -183,19 +309,12 @@ export function renderSales() {
     const grossProfit = totalSales - totalLabor;
 
     // 月の選択肢を生成（直近12ヶ月）
-    const monthOptions = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = `${d.getFullYear()}年${d.getMonth() + 1}月`;
-      monthOptions.push({ val, label });
-    }
+    const monthOptions = generateMonthOptions(12);
 
     return `
       <div class="card mb-xl">
         <div class="card-header">
-          <h3 class="card-title"><i data-lucide="calendar" style="width:18px;height:18px;color:var(--cyan)"></i> 月選択</h3>
+          <h3 class="card-title"><i data-lucide="calendar" style="width:18px;height:18px;color:#ffffff"></i> 月選択</h3>
         </div>
         <div class="form-group" style="max-width:300px;margin:0;">
           <select class="form-select" id="month-select">
@@ -267,60 +386,109 @@ export function renderSales() {
   }
 
   function renderCastTab() {
-    const settings = store.getSettings();
     const casts = store.query('casts', c => c.active);
+
+    // 期間判定
+    let periodStart, periodEnd, periodLabel;
+    if (castPeriod === 'daily') {
+      periodStart = today;
+      periodEnd = today;
+      periodLabel = '本日';
+    } else if (castPeriod === 'weekly') {
+      periodStart = weekStart;
+      periodEnd = weekEnd;
+      periodLabel = `${formatDate(periodStart)} 〜 ${formatDate(periodEnd)}`;
+    } else {
+      periodStart = currentMonth + '-01';
+      const [y, m] = currentMonth.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      periodEnd = `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
+      periodLabel = `${y}年${m}月`;
+    }
+
+    const inPeriod = (d) => d >= periodStart && d <= periodEnd;
 
     const castSales = casts.map(cast => {
       const allNominations = store.query('nominations', n => n.castId === cast.id && n.type === 'honshimei');
-      const todayNominations = allNominations.filter(n => n.date === today);
+      const periodHonshimei = allNominations.filter(n => inPeriod(n.date));
 
-      let todaysSales = 0;
+      let periodSales = 0;
       const seenSessions = new Set();
-      allNominations.forEach(nom => {
-        if (nom.date !== today) return;
+      periodHonshimei.forEach(nom => {
         if (seenSessions.has(nom.sessionId)) return;
         const session = store.getById('table_sessions', nom.sessionId);
         if (session && session.totalAmount) {
           seenSessions.add(nom.sessionId);
-          todaysSales += session.totalAmount;
+          periodSales += session.totalAmount;
         }
       });
 
-      const todayDrinks = store.query('order_items', oi => oi.castId === cast.id && oi.date === today && !oi.cancelled);
-      const drinkCount = todayDrinks.filter(oi => oi.category === 'cast_drink').reduce((s, d) => s + d.quantity, 0);
-      const champagneCount = todayDrinks.filter(oi => oi.category === 'champagne').reduce((s, d) => s + d.quantity, 0);
-      const wineCount = todayDrinks.filter(oi => oi.category === 'wine').reduce((s, d) => s + d.quantity, 0);
-      const banaiCount = store.query('nominations', n => n.castId === cast.id && n.type === 'banai' && n.date === today).length;
-      const douhanCount = store.query('nominations', n => n.castId === cast.id && n.type === 'douhan' && n.date === today).length;
+      const periodDrinks = store.query('order_items', oi => oi.castId === cast.id && inPeriod(oi.date) && !oi.cancelled);
+      const drinkCount = periodDrinks.filter(oi => oi.category === 'cast_drink').reduce((s, d) => s + d.quantity, 0);
+      const champagneCount = periodDrinks.filter(oi => oi.category === 'champagne').reduce((s, d) => s + d.quantity, 0);
+      const wineCount = periodDrinks.filter(oi => oi.category === 'wine').reduce((s, d) => s + d.quantity, 0);
+      const banaiCount = store.query('nominations', n => n.castId === cast.id && n.type === 'banai' && inPeriod(n.date)).length;
+      const douhanCount = store.query('nominations', n => n.castId === cast.id && n.type === 'douhan' && inPeriod(n.date)).length;
 
       return {
         cast,
-        honshimeiCount: todayNominations.length,
+        honshimeiCount: periodHonshimei.length,
         banaiCount,
         douhanCount,
-        todaysSales,
+        periodSales,
         drinkCount,
         champagneCount,
         wineCount
       };
-    }).sort((a, b) => b.todaysSales - a.todaysSales);
+    }).sort((a, b) => b.periodSales - a.periodSales);
 
-    const maxSales = castSales.length > 0 ? castSales[0].todaysSales : 0;
+    const maxSales = castSales.length > 0 ? castSales[0].periodSales : 0;
+    const monthOptions = generateMonthOptions(12);
+    const weekOpts = generateWeekOptions(12);
 
     return `
+      <div class="card mb-xl">
+        <div class="card-header">
+          <h3 class="card-title"><i data-lucide="sliders" style="width:18px;height:18px;color:var(--gold)"></i> 期間指定</h3>
+        </div>
+        <div class="filter-bar" style="margin-bottom:var(--space-md);">
+          <div class="filter-chip ${castPeriod === 'daily' ? 'active' : ''}" data-cast-period="daily">日別</div>
+          <div class="filter-chip ${castPeriod === 'weekly' ? 'active' : ''}" data-cast-period="weekly">週別</div>
+          <div class="filter-chip ${castPeriod === 'monthly' ? 'active' : ''}" data-cast-period="monthly">月別</div>
+        </div>
+        ${castPeriod === 'weekly' ? `
+        <div class="form-group" style="max-width:400px;margin:0;">
+          <label class="form-label">週を選択</label>
+          <select class="form-select" id="cast-week-select">
+            ${weekOpts.map(w => `<option value="${w.start}|${w.end}" ${w.start === weekStart && w.end === weekEnd ? 'selected' : ''}>${w.label}</option>`).join('')}
+          </select>
+        </div>
+        ` : ''}
+        ${castPeriod === 'monthly' ? `
+        <div class="form-group" style="max-width:300px;margin:0;">
+          <label class="form-label">月を選択</label>
+          <select class="form-select" id="cast-month-select">
+            ${monthOptions.map(o => `<option value="${o.val}" ${o.val === currentMonth ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </div>
+        ` : ''}
+        <p style="font-size:var(--text-sm);color:var(--text-tertiary);margin-top:var(--space-md);">対象期間: <strong style="color:var(--text-primary);">${periodLabel}</strong></p>
+      </div>
+
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title"><i data-lucide="trending-up" style="width:18px;height:18px;color:var(--gold)"></i> キャスト別売上（本日）</h3>
+          <h3 class="card-title"><i data-lucide="trending-up" style="width:18px;height:18px;color:var(--gold)"></i> キャスト別売上</h3>
+          <span style="font-size:var(--text-sm);color:var(--text-secondary);">${periodLabel}</span>
         </div>
         ${castSales.length > 0 && maxSales > 0 ? `
         <div style="padding:var(--space-lg);border-bottom:1px solid var(--border-subtle);">
           ${castSales.map((cs, idx) => `
             <div style="display:flex;align-items:center;gap:12px;${idx < castSales.length - 1 ? 'margin-bottom:8px;' : ''}">
-              <div style="width:70px;text-align:right;font-weight:700;font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cs.cast.name}</div>
+              <div style="width:80px;text-align:right;font-weight:700;font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cs.cast.name}</div>
               <div style="flex:1;height:24px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;">
-                <div class="cast-bar-fill" data-width="${Math.round((cs.todaysSales / maxSales) * 100)}" style="width:0;height:100%;background:linear-gradient(90deg,var(--gold-dim),var(--gold));border-radius:6px;transition:width 0.8s cubic-bezier(0.22,1,0.36,1);"></div>
+                <div class="cast-bar-fill" data-width="${Math.round((cs.periodSales / maxSales) * 100)}" style="width:0;height:100%;background:linear-gradient(90deg,var(--gold-dim),var(--gold));border-radius:6px;transition:width 0.8s cubic-bezier(0.22,1,0.36,1);"></div>
               </div>
-              <div style="min-width:90px;text-align:right;font-weight:700;font-family:var(--font-mono);font-size:13px;color:var(--gold-light);">${formatMoney(cs.todaysSales)}</div>
+              <div style="min-width:100px;text-align:right;font-weight:700;font-family:var(--font-mono);font-size:13px;color:var(--gold-light);">${formatMoney(cs.periodSales)}</div>
             </div>
           `).join('')}
         </div>
@@ -335,7 +503,7 @@ export function renderSales() {
               <th class="text-center">ドリンク</th>
               <th class="text-center">シャンパン</th>
               <th class="text-center">ワイン</th>
-              <th class="text-right">本日売上</th>
+              <th class="text-right">${periodLabel}売上</th>
             </tr>
           </thead>
           <tbody>
@@ -353,7 +521,7 @@ export function renderSales() {
                 <td class="text-center">${cs.drinkCount}</td>
                 <td class="text-center">${cs.champagneCount}</td>
                 <td class="text-center">${cs.wineCount}</td>
-                <td class="text-right money" style="font-weight:700;color:var(--gold-light);">${formatMoney(cs.todaysSales)}</td>
+                <td class="text-right money" style="font-weight:700;color:var(--gold-light);">${formatMoney(cs.periodSales)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -371,6 +539,14 @@ export function renderSales() {
       });
     });
 
+    // Cast period switching
+    content.querySelectorAll('.filter-chip[data-cast-period]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        castPeriod = chip.dataset.castPeriod;
+        render();
+      });
+    });
+
     // Daily search
     content.querySelector('#btn-search-daily')?.addEventListener('click', () => {
       dateFrom = content.querySelector('#date-from')?.value || today;
@@ -378,7 +554,29 @@ export function renderSales() {
       render();
     });
 
-    // Month select
+    // Weekly select
+    content.querySelector('#week-select')?.addEventListener('change', (e) => {
+      const [s, e2] = e.target.value.split('|');
+      weekStart = s;
+      weekEnd = e2;
+      render();
+    });
+
+    // Cast week select
+    content.querySelector('#cast-week-select')?.addEventListener('change', (e) => {
+      const [s, e2] = e.target.value.split('|');
+      weekStart = s;
+      weekEnd = e2;
+      render();
+    });
+
+    // Cast month select
+    content.querySelector('#cast-month-select')?.addEventListener('change', (e) => {
+      currentMonth = e.target.value;
+      render();
+    });
+
+    // Month select (monthly tab)
     content.querySelector('#month-select')?.addEventListener('change', (e) => {
       currentMonth = e.target.value;
       render();
@@ -386,6 +584,66 @@ export function renderSales() {
   }
 
   render();
+}
+
+// ============================================
+// ヘルパー: 週範囲（月曜〜日曜）を取得
+// ============================================
+function getCurrentWeekRange(todayKey) {
+  const [y, m, d] = todayKey.split('-').map(Number);
+  const base = new Date(y, m - 1, d);
+  const dow = base.getDay(); // 0=日 ... 6=土
+  // 月曜始まり
+  const offsetFromMonday = (dow + 6) % 7;
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - offsetFromMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  return { weekStart: fmt(monday), weekEnd: fmt(sunday) };
+}
+
+// ============================================
+// ヘルパー: 週オプション（過去N週）
+// ============================================
+function generateWeekOptions(count) {
+  const options = [];
+  const now = new Date();
+  const dow = now.getDay();
+  const offsetFromMonday = (dow + 6) % 7;
+  const thisMonday = new Date(now);
+  thisMonday.setHours(0, 0, 0, 0);
+  thisMonday.setDate(now.getDate() - offsetFromMonday);
+
+  for (let i = 0; i < count; i++) {
+    const mon = new Date(thisMonday);
+    mon.setDate(thisMonday.getDate() - 7 * i);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const start = fmt(mon);
+    const end = fmt(sun);
+    const label = i === 0
+      ? `今週 (${mon.getMonth() + 1}/${mon.getDate()} - ${sun.getMonth() + 1}/${sun.getDate()})`
+      : `${mon.getMonth() + 1}/${mon.getDate()} - ${sun.getMonth() + 1}/${sun.getDate()}`;
+    options.push({ start, end, label });
+  }
+  return options;
+}
+
+// ============================================
+// ヘルパー: 月オプション（過去N月）
+// ============================================
+function generateMonthOptions(count) {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${d.getFullYear()}年${d.getMonth() + 1}月`;
+    options.push({ val, label });
+  }
+  return options;
 }
 
 // ============================================

@@ -13,7 +13,7 @@ import { renderTables } from './pages/tables.js';
 import { renderTableDetail } from './pages/table-detail.js';
 import { renderTabletOrder } from './pages/tablet-order.js';
 import { renderBilling } from './pages/billing.js';
-import { renderCounter } from './pages/counter.js';
+// counter page removed - functionality integrated into tables page
 import { renderCasts } from './pages/casts.js';
 import { renderCastDetail } from './pages/cast-detail.js';
 import { renderSalary } from './pages/salary.js';
@@ -45,7 +45,7 @@ router.register('/tables', () => renderTables());
 router.register('/tables/:id', (params) => renderTableDetail(params));
 router.register('/tablet/:id', (params) => renderTabletOrder(params));
 router.register('/billing', (params) => renderBilling(params));
-router.register('/counter', () => renderCounter());
+router.register('/counter', () => { router.navigate('/tables'); });
 router.register('/casts', () => renderCasts());
 router.register('/casts/:id', (params) => renderCastDetail(params));
 router.register('/salary', () => renderSalary());

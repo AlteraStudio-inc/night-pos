@@ -32,10 +32,6 @@ export function renderLayout(pageContent, activeNav = '') {
               <span>卓一覧</span>
               <span class="nav-badge" id="active-tables-count" style="display:none"></span>
             </div>
-            <div class="nav-item ${activeNav === 'counter' ? 'active' : ''}" data-nav="/counter">
-              <i data-lucide="timer"></i>
-              <span>カウンター</span>
-            </div>
           </div>
           <div class="nav-section">
             <div class="nav-section-label">キャスト</div>

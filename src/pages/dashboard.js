@@ -70,11 +70,11 @@ export function renderDashboard() {
           <button class="btn btn-primary btn-lg w-full" onclick="location.hash='#/tables'">
             <i data-lucide="grid-3x3"></i> 卓一覧
           </button>
-          <button class="btn btn-accent btn-lg w-full" onclick="location.hash='#/counter'">
-            <i data-lucide="timer"></i> カウンター
-          </button>
-          <button class="btn btn-secondary btn-lg w-full" onclick="location.hash='#/casts'">
+          <button class="btn btn-accent btn-lg w-full" onclick="location.hash='#/casts'">
             <i data-lucide="users"></i> キャスト
+          </button>
+          <button class="btn btn-secondary btn-lg w-full" onclick="location.hash='#/sales'">
+            <i data-lucide="trending-up"></i> 売上管理
           </button>
           <button class="btn btn-secondary btn-lg w-full" onclick="location.hash='#/closing'">
             <i data-lucide="clipboard-check"></i> 締め作業

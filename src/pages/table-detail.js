@@ -88,8 +88,8 @@ function renderDetailContent(container, tableId) {
                 <span class="badge badge-${session.status === 'extended' ? 'extended' : session.status === 'billing' ? 'billing' : 'active'}">${statusLabel}</span>
                 ${session.isDouhan ? '<span class="badge badge-gold">同伴</span>' : ''}
               </div>
-              <div style="display:flex;gap:var(--space-xl);font-size:var(--text-sm);color:var(--text-secondary);">
-                <span><strong>${session.guestCount}</strong>名</span>
+              <div style="display:flex;gap:var(--space-xl);font-size:var(--text-sm);color:var(--text-secondary);flex-wrap:wrap;">
+                <span><strong>${session.guestCount}</strong>名${(session.douhanGuestCount || 0) > 0 ? `<span style="color:var(--cyan);">（内同伴${session.douhanGuestCount}名）</span>` : ''}</span>
                 <span>入店 <strong>${formatTime(session.entryTime)}</strong></span>
                 <span>経過 <strong style="font-family:var(--font-mono);color:${remaining <= 10 ? 'var(--danger)' : remaining <= 15 ? 'var(--warning)' : 'var(--text-primary)'}">${elapsed}分</strong></span>
                 <span>セット <strong>${sets.length}</strong> (${session.setType === 'first' ? '初回' : '通常'})</span>
@@ -232,7 +232,7 @@ function renderDetailContent(container, tableId) {
             <i data-lucide="timer-reset"></i> 延長
           </button>
           <button class="btn btn-secondary btn-lg w-full" id="btn-nomination">
-            <i data-lucide="star"></i> 指名登録
+            <i data-lucide="star"></i> 指名登録（本/場内）
           </button>
           <div style="border-top:1px solid var(--border-subtle);padding-top:var(--space-md);margin-top:var(--space-sm);">
             <button class="btn btn-primary btn-xl w-full" id="btn-billing" style="background:linear-gradient(135deg,var(--cyan),var(--cyan-dim));border-color:var(--cyan);">
@@ -267,34 +267,83 @@ function renderDetailContent(container, tableId) {
     });
   });
 
-  // Extend — カスタムモーダルで料金・時間を変更可能
+  // Extend — カスタムモーダルで料金・時間・人数の増減を変更可能
   document.getElementById('btn-extend')?.addEventListener('click', () => {
     const durationOptions = [30, 40, 45, 50, 60, 70, 80, 90];
     const defaultExtDuration = settings.extensionDuration || settings.setDuration || 60;
+    // 現在の人数を初期値に
+    const currentGuests = session.guestCount || 1;
+    const currentDouhan = session.douhanGuestCount || 0;
+    // セッション固有または設定から
+    const perPersonExtPrice = session.regularSetPrice ? settings.extensionPrice : settings.extensionPrice;
     const extContent = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
         <div class="form-group">
-          <label class="form-label">延長料金（円）</label>
+          <label class="form-label">来店人数（延長後）</label>
+          <input type="number" class="form-input" id="ext-guest-count" value="${currentGuests}" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">内 同伴人数</label>
+          <input type="number" class="form-input" id="ext-douhan-count" value="${currentDouhan}" min="0">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
+        <div class="form-group">
+          <label class="form-label">通常延長料金（1名/円）</label>
           <input type="number" class="form-input" id="ext-price" value="${settings.extensionPrice}" min="0" step="100">
         </div>
         <div class="form-group">
-          <label class="form-label">延長時間</label>
-          <select class="form-select" id="ext-duration">
-            ${durationOptions.map(d => `<option value="${d}" ${d === defaultExtDuration ? 'selected' : ''}>${d}分</option>`).join('')}
-          </select>
+          <label class="form-label">同伴延長料金（1名/円）</label>
+          <input type="number" class="form-input" id="ext-douhan-price" value="${session.douhanSetPrice || settings.douhanSetPrice}" min="0" step="100">
         </div>
       </div>
-      <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:var(--space-md);">${table.number}番卓を延長します。料金と時間を確認してください。</p>
+      <div class="form-group">
+        <label class="form-label">延長時間</label>
+        <select class="form-select" id="ext-duration">
+          ${durationOptions.map(d => `<option value="${d}" ${d === defaultExtDuration ? 'selected' : ''}>${d}分</option>`).join('')}
+        </select>
+      </div>
+      <div id="ext-total-preview" style="margin-top:var(--space-md);padding:var(--space-md);background:var(--bg-elevated);border-radius:var(--radius-md);font-size:var(--text-sm);color:var(--text-secondary);"></div>
     `;
     const extFooter = `
       <button class="btn btn-secondary modal-cancel-btn">キャンセル</button>
       <button class="btn btn-primary" id="ext-confirm">延長する</button>
     `;
     const extOverlay = showModal({ title: '延長設定', content: extContent, footer: extFooter });
+
+    // リアルタイム料金プレビュー
+    const updatePreview = () => {
+      const g = parseInt(extOverlay.querySelector('#ext-guest-count').value) || 0;
+      const d = parseInt(extOverlay.querySelector('#ext-douhan-count').value) || 0;
+      const rp = parseInt(extOverlay.querySelector('#ext-price').value) || 0;
+      const dp = parseInt(extOverlay.querySelector('#ext-douhan-price').value) || 0;
+      const regular = Math.max(0, g - d);
+      const total = regular * rp + d * dp;
+      const preview = extOverlay.querySelector('#ext-total-preview');
+      if (preview) {
+        preview.innerHTML = `延長料金合計: <strong style="color:var(--gold-light);font-family:var(--font-mono);">¥${total.toLocaleString()}</strong> <span style="color:var(--text-tertiary);">(通常${regular}名×¥${rp.toLocaleString()} + 同伴${d}名×¥${dp.toLocaleString()})</span>`;
+      }
+    };
+    ['#ext-guest-count', '#ext-douhan-count', '#ext-price', '#ext-douhan-price'].forEach(sel => {
+      extOverlay.querySelector(sel)?.addEventListener('input', updatePreview);
+    });
+    updatePreview();
+
     extOverlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(extOverlay));
     extOverlay.querySelector('#ext-confirm')?.addEventListener('click', () => {
-      const extPrice = parseInt(extOverlay.querySelector('#ext-price').value) || settings.extensionPrice;
+      const newGuestCount = parseInt(extOverlay.querySelector('#ext-guest-count').value) || 1;
+      const newDouhanCount = parseInt(extOverlay.querySelector('#ext-douhan-count').value) || 0;
+      const regPrice = parseInt(extOverlay.querySelector('#ext-price').value) || settings.extensionPrice;
+      const douhanPrice = parseInt(extOverlay.querySelector('#ext-douhan-price').value) || settings.douhanSetPrice;
       const extDuration = parseInt(extOverlay.querySelector('#ext-duration').value) || defaultExtDuration;
+
+      if (newDouhanCount > newGuestCount) {
+        showToast('同伴人数は来店人数を超えられません', 'error');
+        return;
+      }
+
+      const regularCount = Math.max(0, newGuestCount - newDouhanCount);
+      const extPriceTotal = regularCount * regPrice + newDouhanCount * douhanPrice;
 
       // End current set
       if (currentSet) {
@@ -307,15 +356,28 @@ function renderDetailContent(container, tableId) {
         setType: 'extension',
         taxRate: currentSet?.taxRate || settings.defaultTaxRate,
         serviceRate: currentSet?.serviceRate || settings.defaultServiceRate,
-        extensionPrice: extPrice,
+        extensionPrice: extPriceTotal,
         extensionDuration: extDuration,
+        guestCount: newGuestCount,
+        douhanGuestCount: newDouhanCount,
+        regularExtPrice: regPrice,
+        douhanExtPrice: douhanPrice,
         startTime: now(),
         endTime: null,
         active: true
       });
-      store.update('table_sessions', session.id, { status: 'extended' });
+      // セッションの人数情報も更新
+      store.update('table_sessions', session.id, {
+        status: 'extended',
+        guestCount: newGuestCount,
+        douhanGuestCount: newDouhanCount
+      });
       store.update('tables', tableId, { status: 'extended' });
-      store.addAuditLog('table_extend', { tableId, sessionId: session.id, setNumber: sets.length + 1, extensionPrice: extPrice, extensionDuration: extDuration });
+      store.addAuditLog('table_extend', {
+        tableId, sessionId: session.id, setNumber: sets.length + 1,
+        extensionPrice: extPriceTotal, extensionDuration: extDuration,
+        guestCount: newGuestCount, douhanGuestCount: newDouhanCount
+      });
       closeModal(extOverlay);
       showToast('延長しました', 'success');
       renderDetailContent(container, tableId);
@@ -336,8 +398,22 @@ function renderDetailContent(container, tableId) {
 function showNominationModal(session, tableId, mainContainer) {
   const casts = store.query('casts', c => c.active);
   const existingNoms = store.query('nominations', n => n.sessionId === session.id);
+  const hasExistingHonshimei = existingNoms.some(n => n.type === 'honshimei');
 
   const content = `
+    <div class="form-group">
+      <label class="form-label">指名タイプ</label>
+      <div style="display:flex;gap:var(--space-md);flex-wrap:wrap;">
+        <label style="flex:1;min-width:120px;display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-md);background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);cursor:pointer;">
+          <input type="radio" name="nom-type" value="banai" checked>
+          <span>場内指名</span>
+        </label>
+        <label style="flex:1;min-width:120px;display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-md);background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);cursor:${hasExistingHonshimei ? 'not-allowed;opacity:0.5' : 'pointer'};">
+          <input type="radio" name="nom-type" value="honshimei" ${hasExistingHonshimei ? 'disabled' : ''}>
+          <span>本指名${hasExistingHonshimei ? '（登録済）' : ''}</span>
+        </label>
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">キャスト</label>
       <select class="form-select" id="nom-cast">
@@ -359,27 +435,39 @@ function showNominationModal(session, tableId, mainContainer) {
 
   const footer = `
     <button class="btn btn-secondary modal-cancel-btn">キャンセル</button>
-    <button class="btn btn-primary" id="nom-confirm">場内指名を登録</button>
+    <button class="btn btn-primary" id="nom-confirm">指名を登録</button>
   `;
 
-  const overlay = showModal({ title: '場内指名登録', content, footer });
+  const overlay = showModal({ title: '指名登録', content, footer });
   overlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(overlay));
 
   overlay.querySelector('#nom-confirm')?.addEventListener('click', () => {
     const castId = overlay.querySelector('#nom-cast').value;
+    const nomType = overlay.querySelector('input[name="nom-type"]:checked')?.value || 'banai';
     if (!castId) { showToast('キャストを選択してください', 'error'); return; }
+
+    if (nomType === 'honshimei' && hasExistingHonshimei) {
+      showToast('本指名は既に登録されています', 'error');
+      return;
+    }
 
     store.add('nominations', {
       sessionId: session.id,
       tableId,
       castId,
-      type: 'banai',
+      type: nomType,
       date: todayKey()
     });
 
-    store.addAuditLog('nomination_add', { sessionId: session.id, castId, type: 'banai' });
+    // 本指名登録時はセッションにも反映
+    if (nomType === 'honshimei') {
+      store.update('table_sessions', session.id, { honshimeiCastId: castId });
+    }
+
+    store.addAuditLog('nomination_add', { sessionId: session.id, castId, type: nomType });
     closeModal(overlay);
-    showToast('場内指名を登録しました', 'success');
+    const label = nomType === 'honshimei' ? '本指名' : '場内指名';
+    showToast(`${label}を登録しました`, 'success');
     renderDetailContent(mainContainer, tableId);
   });
 }

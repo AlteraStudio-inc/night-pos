@@ -41,8 +41,9 @@ export function calcBillingSummary(session, sets, orderItems, settings) {
   let extensionCharges = 0;
   let douhanFeeTotal = 0;
 
-  // 同伴料金: グループ単位で1件課金
-  if (session.isDouhan) {
+  // 同伴料金: 初回のみ課金（新データは douhanGuestCount × douhanFeePerPerson で事前計算済み）
+  const douhanGuestCount = session.douhanGuestCount || 0;
+  if (douhanGuestCount > 0 || session.isDouhan) {
     douhanFeeTotal = session.douhanFee != null ? session.douhanFee : (settings.douhanFee || 5000);
   }
 
@@ -154,11 +155,11 @@ export function calcCastDailyPay(attendance, backItems, settings, totalDailyPaid
   const endTime = attendance.clockOut ? new Date(attendance.clockOut) : new Date();
   const hoursWorked = (endTime - startTime) / (1000 * 60 * 60);
 
-  let hourlyRate = attendance.hourlyRate || settings.defaultHourlyRate || 2000;
-  
+  let hourlyRate = attendance.hourlyRate || 0;
+
   // スライド（本指名がある日は時給UP）
   if (attendance.hasHonshimei) {
-    hourlyRate += (settings.slideAmount || 500);
+    hourlyRate += (settings.slideAmount || 0);
   }
 
   const basePay = Math.floor(hourlyRate * hoursWorked);
@@ -181,37 +182,38 @@ export function calcCastDailyPay(attendance, backItems, settings, totalDailyPaid
   let bottleCount = 0;
 
   backItems.forEach(item => {
+    const bp = item.backPrice || 0;
     switch (item.type) {
       case 'drink':
-        drinkBack += (item.backPrice || settings.drinkBackPrice || 500) * item.quantity;
+        drinkBack += bp * item.quantity;
         drinkCount += item.quantity;
         break;
       case 'champagne':
-        champagneBack += (item.backPrice || settings.champagneBackPrice || 1000) * item.quantity;
+        champagneBack += bp * item.quantity;
         champagneCount += item.quantity;
         break;
       case 'wine':
-        wineBack += (item.backPrice || settings.wineBackPrice || 500) * item.quantity;
+        wineBack += bp * item.quantity;
         wineCount += item.quantity;
         break;
       case 'nomination':
-        nominationBack += (item.backPrice || settings.nominationBackPrice || 1000) * item.quantity;
+        nominationBack += bp * item.quantity;
         nominationCount += item.quantity;
         break;
       case 'banai':
-        banaiBack += (item.backPrice || settings.banaiBackPrice || 500) * item.quantity;
+        banaiBack += bp * item.quantity;
         banaiCount += item.quantity;
         break;
       case 'douhan':
-        douhanBack += (item.backPrice || settings.douhanBackPrice || 1000) * item.quantity;
+        douhanBack += bp * item.quantity;
         douhanCount += item.quantity;
         break;
       case 'bottle':
-        bottleBack += (item.backPrice || settings.bottleBackPrice || 1000) * item.quantity;
+        bottleBack += bp * item.quantity;
         bottleCount += item.quantity;
         break;
       default:
-        otherBack += (item.backPrice || 0) * item.quantity;
+        otherBack += bp * item.quantity;
     }
   });
 

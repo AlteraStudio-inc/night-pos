@@ -78,50 +78,9 @@ export function renderSettings() {
             <label class="form-label">デフォルトサービス料率（%）</label>
             <input type="number" class="form-input" id="set-service-rate" value="${settings.defaultServiceRate * 100}" min="0" max="100" step="1">
           </div>
-        </div>
-      </div>
-
-      <!-- Cast Pay Settings (defaults) -->
-      <div class="card mb-xl">
-        <div class="card-header">
-          <h3 class="card-title"><i data-lucide="users" style="width:18px;height:18px;color:var(--gold)"></i> キャスト給与設定（デフォルト）</h3>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
-          <div class="form-group">
-            <label class="form-label">デフォルト時給</label>
-            <input type="number" class="form-input" id="set-hourly" value="${settings.defaultHourlyRate}" min="0">
-          </div>
           <div class="form-group">
             <label class="form-label">スライド上昇額（本指名時）</label>
             <input type="number" class="form-input" id="set-slide" value="${settings.slideAmount}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">ドリンクバック単価</label>
-            <input type="number" class="form-input" id="set-drink-back" value="${settings.drinkBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">シャンパンバック単価</label>
-            <input type="number" class="form-input" id="set-champ-back" value="${settings.champagneBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">ワインバック単価</label>
-            <input type="number" class="form-input" id="set-wine-back" value="${settings.wineBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">指名バック単価</label>
-            <input type="number" class="form-input" id="set-nom-back" value="${settings.nominationBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">場内バック単価</label>
-            <input type="number" class="form-input" id="set-banai-back" value="${settings.banaiBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">同伴バック単価</label>
-            <input type="number" class="form-input" id="set-douhan-back" value="${settings.douhanBackPrice}" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">ボトルバック単価</label>
-            <input type="number" class="form-input" id="set-bottle-back" value="${settings.bottleBackPrice}" min="0">
           </div>
         </div>
       </div>
@@ -267,15 +226,7 @@ export function renderSettings() {
       douhanFee: parseInt(document.getElementById('set-douhan-fee').value) || 5000,
       defaultTaxRate: (parseFloat(document.getElementById('set-tax-rate').value) || 20) / 100,
       defaultServiceRate: (parseFloat(document.getElementById('set-service-rate').value) || 20) / 100,
-      defaultHourlyRate: parseInt(document.getElementById('set-hourly').value) || 2000,
-      slideAmount: parseInt(document.getElementById('set-slide').value) || 500,
-      drinkBackPrice: parseInt(document.getElementById('set-drink-back').value) || 500,
-      champagneBackPrice: parseInt(document.getElementById('set-champ-back').value) || 1000,
-      wineBackPrice: parseInt(document.getElementById('set-wine-back').value) || 500,
-      nominationBackPrice: parseInt(document.getElementById('set-nom-back').value) || 1000,
-      banaiBackPrice: parseInt(document.getElementById('set-banai-back').value) || 500,
-      douhanBackPrice: parseInt(document.getElementById('set-douhan-back').value) || 1000,
-      bottleBackPrice: parseInt(document.getElementById('set-bottle-back').value) || 1000
+      slideAmount: parseInt(document.getElementById('set-slide').value) || 0
     };
 
     store.saveSettings(updated);

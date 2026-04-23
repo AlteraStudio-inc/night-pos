@@ -84,7 +84,6 @@ function renderTablesContent(container) {
 
   const activeFilterCount = tableData.filter(t => t.status === 'active').length;
   const extendedFilterCount = tableData.filter(t => t.status === 'extended').length;
-  const billingFilterCount = tableData.filter(t => t.status === 'billing').length;
 
   // 会計済み卓の取得（当日分、会計完了時間降順）
   // 深夜をまたぐケース（昨日入店→今日会計）も表示するため completedAt のローカル日付もチェック
@@ -118,7 +117,6 @@ function renderTablesContent(container) {
       <div class="filter-chip ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">すべて (${tableData.length})</div>
       <div class="filter-chip ${currentFilter === 'active' ? 'active' : ''}" data-filter="active">入店中 (${activeFilterCount})</div>
       <div class="filter-chip ${currentFilter === 'extended' ? 'active' : ''}" data-filter="extended">延長中 (${extendedFilterCount})</div>
-      <div class="filter-chip ${currentFilter === 'billing' ? 'active' : ''}" data-filter="billing">会計待ち (${billingFilterCount})</div>
       <div class="filter-chip ${currentFilter === 'vacant' ? 'active' : ''}" data-filter="vacant">空席 (${vacantCount})</div>
       <div style="margin-left:auto;">
         <button class="btn btn-primary btn-lg" id="open-table-btn">
@@ -281,20 +279,28 @@ function showOpenTableModal() {
         ${vacantTables.map(t => `<option value="${t.id}">${t.number}番卓</option>`).join('')}
       </select>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-lg);">
       <div class="form-group">
         <label class="form-label">来店人数 <span style="color:var(--danger)">*</span></label>
         <input type="number" class="form-input" id="modal-guest-count" min="1" value="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">内 同伴人数</label>
+        <input type="number" class="form-input" id="modal-douhan-count" min="0" value="0">
       </div>
       <div class="form-group">
         <label class="form-label">入店時間</label>
         <input type="time" class="form-input" id="modal-entry-time" value="${new Date().getHours().toString().padStart(2, '0')}:${new Date().getMinutes().toString().padStart(2, '0')}">
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-lg);">
       <div class="form-group">
-        <label class="form-label">セット料金（円）</label>
+        <label class="form-label">通常セット料金（1名/円）</label>
         <input type="number" class="form-input" id="modal-set-price" value="${settings.firstSetPrice}" min="0" step="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">同伴セット料金（1名/円）</label>
+        <input type="number" class="form-input" id="modal-douhan-set-price" value="${settings.douhanSetPrice}" min="0" step="100">
       </div>
       <div class="form-group">
         <label class="form-label">セット時間</label>
@@ -305,14 +311,11 @@ function showOpenTableModal() {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);">
       <div class="form-group">
-        <label class="form-label">同伴</label>
-        <select class="form-select" id="modal-douhan">
-          <option value="no">なし</option>
-          <option value="yes">あり</option>
-        </select>
+        <label class="form-label">同伴料金（1名/円・初回のみ）</label>
+        <input type="number" class="form-input" id="modal-douhan-fee" value="${settings.douhanFee}" min="0" step="100">
       </div>
       <div class="form-group">
-        <label class="form-label">本指名</label>
+        <label class="form-label">本指名キャスト</label>
         <select class="form-select" id="modal-honshimei-cast">
           <option value="">なし</option>
           ${activeCasts.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
@@ -349,22 +352,24 @@ function showOpenTableModal() {
 
   const overlay = showModal({ title: '卓を開く', content, footer, persistent: true });
 
-  // Douhan toggle — セット料金もデフォルト変更
-  overlay.querySelector('#modal-douhan')?.addEventListener('change', (e) => {
+  // 同伴人数が0より大きい場合、同伴キャスト選択を表示
+  const updateDouhanSection = () => {
     const section = overlay.querySelector('#douhan-cast-section');
-    const priceInput = overlay.querySelector('#modal-set-price');
-    if (section) section.style.display = e.target.value === 'yes' ? '' : 'none';
-    if (priceInput) priceInput.value = e.target.value === 'yes' ? settings.douhanSetPrice : settings.firstSetPrice;
-  });
+    const douhanCount = parseInt(overlay.querySelector('#modal-douhan-count').value) || 0;
+    if (section) section.style.display = douhanCount > 0 ? '' : 'none';
+  };
+  overlay.querySelector('#modal-douhan-count')?.addEventListener('input', updateDouhanSection);
 
   overlay.querySelector('.modal-cancel-btn')?.addEventListener('click', () => closeModal(overlay));
 
   overlay.querySelector('#modal-open-table-confirm')?.addEventListener('click', () => {
     const tableId = overlay.querySelector('#modal-table-select').value;
     const guestCount = parseInt(overlay.querySelector('#modal-guest-count').value);
+    const douhanGuestCount = parseInt(overlay.querySelector('#modal-douhan-count').value) || 0;
     const entryTimeStr = overlay.querySelector('#modal-entry-time').value;
-    const isDouhan = overlay.querySelector('#modal-douhan').value === 'yes';
-    const setPrice = parseInt(overlay.querySelector('#modal-set-price').value) || settings.firstSetPrice;
+    const regularSetPrice = parseInt(overlay.querySelector('#modal-set-price').value) || settings.firstSetPrice;
+    const douhanSetPrice = parseInt(overlay.querySelector('#modal-douhan-set-price').value) || settings.douhanSetPrice;
+    const douhanFeePerPerson = parseInt(overlay.querySelector('#modal-douhan-fee').value) || settings.douhanFee;
     const setDuration = parseInt(overlay.querySelector('#modal-set-duration').value) || settings.setDuration;
     const taxRate = parseFloat(overlay.querySelector('#modal-tax-rate').value) / 100;
     const serviceRate = parseFloat(overlay.querySelector('#modal-service-rate').value) / 100;
@@ -374,6 +379,7 @@ function showOpenTableModal() {
     // Validation
     if (!tableId) { showToast('卓番号を選択してください', 'error'); return; }
     if (!guestCount || guestCount < 1) { showToast('来店人数は1名以上で入力してください', 'error'); return; }
+    if (douhanGuestCount > guestCount) { showToast('同伴人数は来店人数を超えられません', 'error'); return; }
 
     const today = todayKey();
     const entryDate = new Date();
@@ -382,13 +388,20 @@ function showOpenTableModal() {
       entryDate.setHours(parseInt(h), parseInt(m), 0, 0);
     }
 
-    const settings = store.getSettings();
+    const regularGuestCount = guestCount - douhanGuestCount;
+    const isDouhan = douhanGuestCount > 0;
+
+    // 初回セット料金 = 通常客×通常セット料金 + 同伴客×同伴セット料金
+    const setPrice = regularGuestCount * regularSetPrice + douhanGuestCount * douhanSetPrice;
+    // 同伴料金（初回のみ）= 同伴人数 × 同伴料金（1名あたり）
+    const douhanFeeTotal = douhanGuestCount * douhanFeePerPerson;
 
     // Create session
     const session = store.add('table_sessions', {
       tableId,
       date: today,
       guestCount,
+      douhanGuestCount,
       entryTime: entryDate.toISOString(),
       setType: 'first',
       isDouhan,
@@ -396,7 +409,10 @@ function showOpenTableModal() {
       douhanCastId,
       honshimeiCastId,
       setDuration,
-      douhanFee: isDouhan ? (settings.douhanFee || 5000) : 0
+      douhanFee: douhanFeeTotal,
+      regularSetPrice,
+      douhanSetPrice,
+      douhanFeePerPerson
     });
 
     // Create first set
@@ -407,6 +423,10 @@ function showOpenTableModal() {
       taxRate,
       serviceRate,
       setPrice,
+      guestCount,
+      douhanGuestCount,
+      regularSetPrice,
+      douhanSetPrice,
       setDuration,
       startTime: entryDate.toISOString(),
       endTime: null,
